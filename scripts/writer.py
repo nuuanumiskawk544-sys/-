@@ -3,58 +3,66 @@ import re
 import sys
 from openai import OpenAI
 
-def get_context():
+def get_config():
+    """获取 README 中的全局设定和规则"""
     if not os.path.exists("README.md"):
-        return "请开始创作", "暂无规则"
+        return "规则怪谈", "暂无规则"
     with open("README.md", "r", encoding="utf-8") as f:
         content = f.read()
+    rules_match = re.search(r"## .*?[守则|法则|规则].*?\n(.*?)(?=\n##|$)", content, re.S)
+    rules = rules_match.group(1).strip() if rules_match else "保持冷酷，遵守规则。"
+    return content, rules
+
+def get_last_chapter():
+    """读取最后一章的内容，让 AI 知道剧情进度"""
+    if not os.path.exists("chapters") or not os.listdir("chapters"):
+        return "这是第一章，请开始故事。", 0
     
-    # 更加灵活的正则：匹配包含“守则”或“法则”的标题
-    rules_match = re.search(r"## .*?[守则|法则|世界观].*?\n(.*?)(?=\n##|$)", content, re.S)
-    rules_text = rules_match.group(1).strip() if rules_match else "通用规则：保持冷静，利用空间。"
-    return content, rules_text
+    files = sorted([f for f in os.listdir("chapters") if f.endswith(".md")])
+    last_file = files[-1]
+    with open(f"chapters/{last_file}", "r", encoding="utf-8") as f:
+        return f.read(), len(files)
 
 def write_novel():
-    api_key = os.getenv("AI_API_KEY")
-    if not api_key:
-        print("❌ 错误：未在环境变量中找到 AI_API_KEY，请检查 GitHub Secrets 设置。")
-        sys.exit(1)
+    client = OpenAI(api_key=os.getenv("AI_API_KEY"), base_url="https://api.deepseek.com")
+    full_context, rules = get_config()
+    last_content, count = get_last_chapter()
+    next_index = count + 1
 
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-    full_context, rules = get_context()
-    branch_name = os.getenv("GITHUB_REF_NAME", "new_chapter")
+    print(f"🚀 正在构思第 {next_index} 章...")
 
-    print(f"🚀 正在调用 DeepSeek 为分支 {branch_name} 生成番茄风格怪谈...")
+    prompt = f"""
+    你是番茄小说白金作家，擅长中式规则怪谈。
+    【前情提要】：{last_content[-500:]} # 取最后500字防止Token溢出
+    【全局规则】：{rules}
     
+    【任务】：
+    1. 为第 {next_index} 章起一个带有悬念的标题。
+    2. 按照番茄风（短句、多留白、快节奏）续写本章内容。
+    3. 字数 1500 字左右。
+    4. 格式要求：第一行必须是“第XX章：标题名”，然后空两行开始正文。
+    """
+
     try:
         response = client.chat.completions.create(
             model="deepseek-chat",
-            messages=[
-                {
-                    "role": "system", 
-                    "content": f"""你是一位番茄小说白金作家。文风要求：
-                    1. 节奏极快，每段不超3行。
-                    2. 大量留白，多对话，少描写。
-                    3. 必须遵守规则：{rules}"""
-                },
-                {"role": "user", "content": f"当前设定：\n{full_context}\n\n请写出该分支的新章节内容。"}
-            ]
+            messages=[{"role": "user", "content": prompt}]
         )
+        new_content = response.choices[0].message.content
         
-        content = response.choices[0].message.content
+        # 自动提取 AI 起的标题作为文件名
+        first_line = new_content.split('\n')[0]
+        title = re.sub(r'[^\w\s-]', '', first_line).strip().replace(' ', '_')
         
-        # 保存文件
         os.makedirs("chapters", exist_ok=True)
-        safe_filename = branch_name.replace("/", "_")
-        file_path = f"chapters/{safe_filename}.md"
+        file_path = f"chapters/{next_index:03d}_{title}.md" # 格式如 002_第2章_诡异的镜子.md
         
         with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
+            f.write(new_content)
         
-        print(f"✅ 章节已保存至：{file_path}")
-        
+        print(f"✅ 第 {next_index} 章创作完成：{file_path}")
     except Exception as e:
-        print(f"❌ API 调用或保存失败: {str(e)}")
+        print(f"❌ 创作失败: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
