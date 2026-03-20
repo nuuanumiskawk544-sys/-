@@ -29,9 +29,10 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: python scripts/writer.py
 
-      - name: 提交并推送章节
+  - name: 提交并推送章节
         run: |
           git config --global user.name "GhostWriter-Bot"
           git config --global user.email "bot@github.com"
           git add chapters/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "AI: 自动生成新章节" && git push)
+          # 检查是否有内容变化，防止空提交报错
+          git diff --quiet && git diff --staged --quiet || (git commit -m "AI: 自动生成新章节" && git push origin ${{ github.ref_name }})
