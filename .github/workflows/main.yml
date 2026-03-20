@@ -1,10 +1,12 @@
 name: Infinite Ghost Writer
 
 on:
+  workflow_dispatch: # 强烈建议：通过手动点击按钮来开启“第一章”
   push:
     branches:
-      - main  # 只要 main 分支有更新，就触发下一章
-  workflow_dispatch: # 允许你手动点击按钮开始第一章
+      - main
+    paths-ignore:
+      - 'README.md' # 忽略 README 的修改，防止你改设定时触发乱码
 
 permissions:
   contents: write
@@ -12,30 +14,41 @@ permissions:
 jobs:
   write_next_chapter:
     runs-on: ubuntu-latest
-    # 防止死循环失控，设置单次任务超时时间
-    timeout-minutes: 10
+    if: "!contains(github.event.head_commit.message, '完结')" # 如果提到完结，则彻底停止
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 必须获取完整历史，否则 push 必报 128 或 1
 
-      - name: Setup Python
+      - name: 设置 Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: 安装依赖
         run: pip install openai
 
-      - name: AI Write
+      - name: AI 创作章节
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          GITHUB_REF_NAME: main
         run: python scripts/writer.py
 
-      - name: Push to main
+      - name: 自动同步并推送
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 先拉取最新更改，防止 OOS 冲突
+          git pull origin main --rebase
+          
           git add chapters/
-          # 如果有新章节，则提交并推送到 main
-          git diff --staged --quiet || (git commit -m "自动续写新章节 [skip ci]" && git push origin main)
+          
+          # 检查是否有新章节
+          if git diff --staged --quiet; then
+            echo "没有新内容，停止连载。"
+          else
+            # 注意：这里千万不要加 [skip ci]，否则不会触发下一轮自动续写
+            git commit -m "自动续写新章节: 第 $(ls chapters | wc -l) 章"
+            git push origin main
+          fi
