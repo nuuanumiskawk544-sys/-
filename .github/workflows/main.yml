@@ -1,50 +1,41 @@
-name: Ghost Writer Workflow
+name: Infinite Ghost Writer
 
 on:
   push:
     branches:
-      - 'feat/**'
+      - main  # 只要 main 分支有更新，就触发下一章
+  workflow_dispatch: # 允许你手动点击按钮开始第一章
 
 permissions:
   contents: write
 
 jobs:
-  generate:
+  write_next_chapter:
     runs-on: ubuntu-latest
+    # 防止死循环失控，设置单次任务超时时间
+    timeout-minutes: 10
     steps:
-      - name: 检出代码
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # 获取完整历史以确保推送顺利
 
-      - name: 设置 Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: pip install openai
 
-      - name: 运行 AI 创作脚本
+      - name: AI Write
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REF_NAME: main
         run: python scripts/writer.py
 
-      - name: 提交并推送章节
+      - name: Push to main
         run: |
-          # 配置 GitHub 官方机器人身份
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # 强制添加生成的章节文件夹
           git add chapters/
-          
-          # 检查是否有文件变动
-          if git diff --staged --quiet; then
-            echo "没有新章节生成，跳过提交。"
-          else
-            git commit -m "AI: 自动生成新章节 [skip ci]"
-            # 关键改进：显式指定推送路径
-            git push origin HEAD:${{ github.ref }}
-          fi
+          # 如果有新章节，则提交并推送到 main
+          git diff --staged --quiet || (git commit -m "自动续写新章节 [skip ci]" && git push origin main)
