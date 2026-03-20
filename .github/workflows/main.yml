@@ -3,10 +3,10 @@ name: Ghost Writer Workflow
 on:
   push:
     branches:
-      - 'feat/**' # 当推送到以 feat/ 开头的分支时触发
+      - 'feat/**'  # 仅在创建 feat/ 开头的分支时运行，避免死循环
 
 permissions:
-  contents: write # 授予机器人写入代码的权限
+  contents: write
 
 jobs:
   generate:
@@ -25,7 +25,7 @@ jobs:
 
       - name: 运行 AI 创作脚本
         env:
-          AI_API_KEY: ${{ secrets.AI_API_KEY }} # 从 GitHub Secrets 读取密钥
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: python scripts/writer.py
 
@@ -34,4 +34,5 @@ jobs:
           git config --global user.name "GhostWriter-Bot"
           git config --global user.email "bot@github.com"
           git add chapters/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "AI: 自动生成新章节" && git push)
+          # 只有当文件确实发生变化时才提交
+          git diff --quiet && git diff --staged --quiet || (git commit -m "AI: 自动生成新章节" && git push origin ${{ github.ref_name }})
