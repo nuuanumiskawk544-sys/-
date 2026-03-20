@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史以确保推送顺利
 
       - name: 设置 Python
         uses: actions/setup-python@v4
@@ -31,7 +33,18 @@ jobs:
 
       - name: 提交并推送章节
         run: |
-          git config --global user.name "GhostWriter-Bot"
-          git config --global user.email "bot@github.com"
+          # 配置 GitHub 官方机器人身份
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 强制添加生成的章节文件夹
           git add chapters/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "AI: 自动生成新章节" && git push origin ${{ github.ref_name }})
+          
+          # 检查是否有文件变动
+          if git diff --staged --quiet; then
+            echo "没有新章节生成，跳过提交。"
+          else
+            git commit -m "AI: 自动生成新章节 [skip ci]"
+            # 关键改进：显式指定推送路径
+            git push origin HEAD:${{ github.ref }}
+          fi
