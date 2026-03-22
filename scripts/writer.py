@@ -8,7 +8,8 @@ MAX_TOTAL_WORDS = 1500000  # 总字数熔断
 CHAPTER_WORDS = 2000      # 每章目标字数
 STORY_FILE = "四合院：我的空间能产肉，众禽馋疯了.txt"
 OUTLINE_FILE = "四合院：我的空间能产肉，众禽馋疯了 大纲.txt"
-MODEL_NAME = "deepseek-chat" # 或使用你指定的模型
+MODEL_NAME = "deepseek-chat" 
+STATE_FILE = "world_state.json"
 # =========================
 
 def get_comprehensive_context():
@@ -24,7 +25,7 @@ def get_comprehensive_context():
 
     last_content = ""
     max_chapter_num = 0
-
+    world_state = "暂无实时状态记录"
     # 优先检查自动化生成的章节目录
     if os.path.exists("chapters"):
         files = [f for f in os.listdir("chapters") if f.endswith(".md")]
