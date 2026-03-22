@@ -67,36 +67,49 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data):
-    print("🔄 开始尝试同步人物状态卡...")
-    update_prompt = f"根据最新章节，更新以下 JSON 状态。仅返回纯 JSON 字符串。\n旧状态: {json.dumps(old_data, ensure_ascii=False)}\n新内容: {new_chapter_content[:1500]}"
+    """
+    强制 AI 根据新剧情解析出人物状态的变化（如：林东来救了人、易中海破防了等）
+    """
+    print("🧠 正在实时分析剧情，更新人物状态卡...")
     
+    # 构造极其严厉的 Prompt，防止 AI 偷懒返回旧数据
+    update_prompt = f"""
+    你现在是数据记录员。请根据最新章节内容，更新《四合院》世界状态 JSON。
+    
+    【当前旧状态】：
+    {json.dumps(old_data, ensure_ascii=False, indent=2)}
+    
+    【最新章节片段】：
+    {new_chapter_content[:1500]}
+    
+    【更新要求】：
+    1. 必须更新 'plot_progress'（描述当前林东来正在做什么）。
+    2. 必须更新 'key_npcs'（如果剧情中提到了苏云秀、易中海，更新他们的现状）。
+    3. 必须更新 'last_update_chapter' 为 {int(old_data.get('last_update_chapter', 0)) + 1}。
+    4. 仅返回 JSON 格式，不要任何解释。
+    """
+
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ "type": "json_object" } # 强制 DeepSeek 输出 JSON
+            response_format={ "type": "json_object" } # 强制输出合法 JSON
         )
         
-        raw_res = response.choices[0].message.content
-        # 🚨 强制提取 JSON 部分，防止 AI 返回 Markdown 代码块
-        json_str = re.search(r'\{.*\}', raw_res, re.DOTALL).group()
-        new_data = json.loads(json_str)
+        # 解析并清理数据
+        res_json = response.choices[0].message.content
+        new_data = json.loads(re.search(r'\{.*\}', res_json, re.DOTALL).group())
         
-        # 强制更新章节计数，确保 next_index 递增
-        new_data['last_update_chapter'] = int(old_data.get('last_update_chapter', 0)) + 1
-        
-        # 🚨 物理写入：加入 flush 和 fsync 确保写入 Actions 的磁盘
+        # 物理写入：确保文件被真正修改
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
             f.flush()
-            os.fsync(f.fileno())
+            os.fsync(f.fileno()) # 强制同步到磁盘
             
-        print(f"✨ 状态卡更新成功！当前进度：第 {new_data['last_update_chapter']} 章")
+        print(f"✨ 状态卡已更新！当前剧情位置：{new_data.get('plot_progress')}")
         
     except Exception as e:
-        print(f"❌ 状态更新失败！原因: {str(e)}")
-        # 即使失败也打印出原始返回，方便在 Actions 日志中排查
-        print(f"AI 原始返回内容: {raw_res if 'raw_res' in locals() else '无'}")
+        print(f"❌ 状态实时同步失败: {e}")
 
 def write_novel():
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
