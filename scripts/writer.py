@@ -59,8 +59,7 @@ def get_comprehensive_context():
                 max_chapter_num = int(chapter_matches[-1])
                 print(f"📖 检测到原始文档最新进度：第 {max_chapter_num} 章")
 
-    return outline, last_content, max_chapter_num
-   # --- 3. 读取人物状态卡 (带 JSON 深度捕获) ---
+   # --- 读取人物状态卡 (带 JSON 深度捕获) ---
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
