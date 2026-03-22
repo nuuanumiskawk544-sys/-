@@ -4,7 +4,7 @@ import sys
 from openai import OpenAI
 
 # ======= 核心配置区 =======
-MAX_TOTAL_WORDS = 500000  # 总字数熔断
+MAX_TOTAL_WORDS = 1500000  # 总字数熔断
 CHAPTER_WORDS = 2000      # 每章目标字数
 STORY_FILE = "四合院：我的空间能产肉，众禽馋疯了.txt" # 你的原始文档名
 OUTLINE_FILE = "四合院：我的空间能产肉，众禽馋疯了 大纲.txt" # 大纲文件名
@@ -29,7 +29,7 @@ def get_comprehensive_context():
     elif os.path.exists(STORY_FILE):
         with open(STORY_FILE, "r", encoding="utf-8") as f:
             full_text = f.read()
-            # 简单粗暴提取最后 1500 字作为参考
+            # 提取最后 100000 字作为参考
             last_content = full_text[-1500:]
             # 尝试通过“第XX章”匹配当前章节数
             chapters = re.findall(r'第(\d+)章', full_text)
@@ -48,7 +48,7 @@ def write_novel():
     你现在是顶尖网文作家，正在续写四合院题材小说。
     
     【核心大纲参考】：
-    {outline}
+    {outline} 全程参考大纲要求
     
     【前情提要】：
     {last_context}
