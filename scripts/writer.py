@@ -14,13 +14,16 @@ STATE_FILE = "world_state.json"
 # =========================
 
 def get_comprehensive_context():
-    """读取背景、状态和前情"""
+    """
+    智能上下文识别:
+    1. 扫描大纲、人物状态卡。
+    2. 自动识别章节编号与前情提要。
+    """
     outline = "暂无大纲"
-    world_state_data = {} # 存储原始字典，方便后续更新
+    world_state_data = {}
     world_state_str = "暂无实时状态"
     last_content = "暂无前情"
     max_chapter_num = 0
-
     # 1. 读取大纲
     if os.path.exists(OUTLINE_FILE):
         with open(OUTLINE_FILE, "r", encoding="utf-8") as f:
