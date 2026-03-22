@@ -76,26 +76,38 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data):
-    """让 AI 根据新内容自动更新 JSON 状态卡"""
+    """让 AI 总结并强制写入 JSON"""
     print("🧠 正在同步世界状态...")
+    
     update_prompt = f"""
-    请根据【新章节内容】，更新【旧状态数据】。直接返回 JSON。
+    请根据【新章节内容】，更新【旧状态数据】。
+    要求：仅返回更新后的 JSON 对象，严禁任何解释说明。
     【旧数据】: {json.dumps(old_data, ensure_ascii=False)}
-    【新内容】: {new_chapter_content[:2000]}
+    【新内容】: {new_chapter_content[:1500]}
     """
+    
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ 'type': 'json_object' }
+            response_format={ "type": "json_object" } # 强制 DeepSeek 返回 JSON
         )
-        new_data = json.loads(response.choices[0].message.content)
+        
+        # 清洗可能存在的 Markdown 标签
+        raw_json = response.choices[0].message.content
+        new_data = json.loads(raw_json)
+        
+        # 逻辑补全：确保章节号递增
         new_data['last_update_chapter'] = old_data.get('last_update_chapter', 0) + 1
+        
+        # 🛠️ 关键动作：物理写入文件
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
-        print(f"✅ 状态卡已更新: {STATE_FILE}")
+            
+        print(f"✨ [本地更新成功] {STATE_FILE} 内容已变更为第 {new_data['last_update_chapter']} 章状态")
+        
     except Exception as e:
-        print(f"⚠️ 状态同步失败: {e}")
+        print(f"❌ 状态更新失败: {str(e)}")
 
 def write_novel():
     # 1. 获取数据
