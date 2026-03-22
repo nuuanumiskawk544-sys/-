@@ -193,9 +193,10 @@ def write_novel():
     请直接从上一章结尾的动作开始，不要回顾，不要总结，直接写新剧情！
     """
 
-    print(f"🚀 正在调用 AI 生成第 {next_index} 章...")
+   print(f"🚀 正在调用 AI 生成第 {next_index} 章...")
 
     try:
+        # 3. 先通过 AI 生成新章节内容
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -208,26 +209,29 @@ def write_novel():
 
         new_chapter_content = response.choices[0].message.content
 
-        # 5. 保存文件
+        # 4. 根据生成的内容动态确定文件名 (解决 UnboundLocalError)
         os.makedirs("chapters", exist_ok=True)
-        
-        # 尝试从内容中提取 AI 给的标题
-        title_match = re.search(r'第\d+章：(.*)\n', new_chapter_content)
+        title_match = re.search(r'第\d+章[：\s]*(.*)\n', new_chapter_content)
         if title_match:
             clean_title = re.sub(r'[\\/:*?"<>|]', '', title_match.group(1).strip())
         else:
-            clean_title = "新章节"
+            clean_title = "新进展"
             
         file_name = f"{next_index:03d}_{clean_title[:10]}.md"
         file_path = os.path.join("chapters", file_name)
 
+        # 5. 【第一步写入】物理保存生成的章节
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_chapter_content)
+        print(f"✅ 章节已保存: {file_path}")
 
-        print(f"✅ 成功生成：{file_path}")
+        # 6. 【第二步写入】实时更新人物状态卡 (world_state.json)
+        # 🚨 只有在这里调用，AI 才能根据刚刚生成的 new_chapter_content 来更新 JSON！
+        update_state_via_ai(client, new_chapter_content, old_state_data)
 
     except Exception as e:
-        print(f"❌ AI 生成过程中出错：{str(e)}")
+        print(f"❌ 运行过程中出错：{str(e)}")
         sys.exit(1)
+
 if __name__ == "__main__":
     write_novel()
