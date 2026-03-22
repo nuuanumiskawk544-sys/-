@@ -1,16 +1,16 @@
 name: Infinite Ghost Writer 2026
 
 on:
-  workflow_dispatch: # 保留手动开关，你可以随时点火启动
+  workflow_dispatch: # 手动启动
   push:
     branches:
       - main
-    # 核心功能：以下文件发生变动时，不触发自动续写
+    # 核心功能：以下文件变动时不触发自动续写
     paths-ignore:
       - 'README.md'
       - '四合院：我的空间能产肉，众禽馋疯了 大纲.txt'
-      - 'chapters/**'  # 当你手动删除或精修章节时，不触发续写
-      - '.github/workflows/**' # 修改工作流文件本身时不触发
+      - 'chapters/**'  # 手动精修章节时不触发
+      - '.github/workflows/**' # 修改工作流时不触发
 
 permissions:
   contents: write
@@ -21,8 +21,7 @@ env:
 jobs:
   write_next_chapter:
     runs-on: ubuntu-latest
-    # 逻辑优化：手动启动(workflow_dispatch)时强制运行；
-    # 自动推送时，只有不含 [skip ci] 且不含“停止”才运行。
+    # 逻辑优化：手动启动或不含停止信号的推送才运行
     if: |
       github.event_name == 'workflow_dispatch' || 
       (
@@ -56,46 +55,32 @@ jobs:
             python scripts/reviewer.py
           fi
 
-      - name: 安全同步并推送
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          mkdir -p chapters
-          git pull origin main --rebase
-          git add chapters/
-          git add world_state.json  #
-
-          if git diff --staged --quiet; then
-            echo "⚠️ 没有新章节，流程自然结束。"
-          else
-            COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
-            # 推送时不带 [skip ci]，确保下一轮循环可以正常开启
-            git commit -m "自动续写: 第 ${COUNT} 章"
-            git push origin main
-          fi
-      - name: 提交并推送更改
+      - name: 统一同步并推送更改
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # 1. 配置身份
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 2. 将所有新生成的章节和状态卡加入暂存区
-          git add chapters/*.md world_state.json
+          # 2. 拉取远程更新，防止提交冲突
+          git pull origin main --rebase
           
-          # 3. 检查是否有实际改动
+          # 3. 将新生成的章节和状态卡加入暂存区
+          mkdir -p chapters
+          git add chapters/*.md
+          git add world_state.json
+          
+          # 4. 检查是否有实际改动（关键：防止 Exit code 1）
           if git diff --staged --quiet; then
             echo "⚠️ 没有检测到内容更新（章节或状态卡），流程结束。"
           else
-            # 统计当前总章节数用于提交说明
+            # 统计当前总章节数
             COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
             echo "🚀 检测到更新，正在推送第 ${COUNT} 章及最新状态卡..."
             
-            # 4. 执行单次提交
+            # 5. 执行单次提交并推送
+            # 提交信息中不包含 [skip ci]，以便触发下一轮自动续写（实现无限循环）
             git commit -m "自动续写: 第 ${COUNT} 章及世界状态卡同步"
-            
-            # 5. 推送到主分支 (确保权限正确)
             git push origin main
           fi
