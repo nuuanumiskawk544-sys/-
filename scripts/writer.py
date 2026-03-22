@@ -80,7 +80,7 @@ def get_comprehensive_context():
     return outline, last_content, max_chapter_num, world_state
 def write_novel():
     # 1. 获取上下文和当前章节数
-    outline, last_context, current_count = get_comprehensive_context()
+    outline, last_context, current_count, world_state = get_comprehensive_context()
     
     # 2. 确定下一章编号
     next_index = current_count + 1
