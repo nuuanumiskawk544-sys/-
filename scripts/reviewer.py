@@ -61,3 +61,39 @@ def run():
 
 if __name__ == "__main__":
     run()
+
+def update_world_state(chapter_content, chapter_num):
+    """
+    调用 AI 总结本章，更新 world_state.json
+    """
+    api_key = os.getenv("AI_API_KEY")
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    
+    with open("world_state.json", "r", encoding="utf-8") as f:
+        old_state = f.read()
+
+    summary_prompt = f"""
+    你是一个文学编辑。请根据【新章节内容】，更新【旧世界状态】。
+    要求：
+    1. 保持简练，每条信息不超过30字。
+    2. 更新主角的最新物资、NPC的好感度或死活。
+    3. 给出最新的剧情进度总结。
+    
+    【旧世界状态】：{old_state}
+    【新章节内容】：{chapter_content[:2000]}
+    
+    请直接返回更新后的 JSON 格式，不要有其他废话。
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": summary_prompt}],
+            response_format={ 'type': 'json_object' } # 强制返回 JSON
+        )
+        new_state = response.choices[0].message.content
+        with open("world_state.json", "w", encoding="utf-8") as f:
+            f.write(new_state)
+        print("📊 人物状态卡已同步更新。")
+    except:
+        print("⚠️ 状态更新失败，跳过。")
