@@ -14,48 +14,55 @@ STATE_FILE = "world_state.json"
 # =========================
 
 def get_comprehensive_context():
-    """智能上下文识别"""
-    outline = "暂无大纲"
-    world_state_data = {}
-    world_state_str = "暂无实时状态记录"
-    last_content = "暂无前情提要"
-    max_chapter_num = 0
+    """智能上下文识别：强制识别本地 chapters 文件夹的最高编号"""
+    outline, world_state_data, world_state_str = "暂无大纲", {}, "暂无实时状态记录"
+    last_content, max_chapter_num = "暂无前情提要", 0
 
+    # 1. 读取大纲
     if os.path.exists(OUTLINE_FILE):
         with open(OUTLINE_FILE, "r", encoding="utf-8") as f:
             outline = f.read()
 
+    # 2. 【核心步骤】识别 chapters 文件夹中的最高章节编号
     if os.path.exists("chapters"):
+        # 获取所有 .md 文件
         files = [f for f in os.listdir("chapters") if f.endswith(".md")]
         if files:
-            nums = [int(re.match(r'(\d+)', f).group(1)) for f in files if re.match(r'(\d+)', f)]
+            # 🚨 关键：使用正则表达式提取文件名开头的数字（如 "018_Chapter.md" -> 18）
+            nums = []
+            for f in files:
+                match = re.match(r'(\d+)', f)
+                if match:
+                    nums.append(int(match.group(1)))
+            
             if nums:
-                max_chapter_num = max(nums)
-                pattern = f"{max_chapter_num:03d}"
-                target = [f for f in files if f.startswith(pattern)][0]
-                with open(os.path.join("chapters", target), "r", encoding="utf-8") as f:
-                    last_content = f.read()
-                print(f"📡 检测到 chapters 进度: 第 {max_chapter_num} 章")
+                max_chapter_num = max(nums) # 找到最大的数字，比如 17
+                print(f"📡 [DEBUG] 脚本物理扫描完成：当前已写到第 {max_chapter_num} 章")
+                
+                # 找到对应这个最大数字的文件，读取内容作为“前情提要”
+                pattern = f"{max_chapter_num:03d}" # 格式化为 017 这种形式
+                target_files = [f for f in files if f.startswith(pattern)]
+                if target_files:
+                    target_path = os.path.join("chapters", target_files[0])
+                    with open(target_path, "r", encoding="utf-8") as f:
+                        last_content = f.read()
+            else:
+                print("⚠️ [WARNING] chapters 文件夹里有文件，但没找到数字编号。")
+        else:
+            print("ℹ️ [INFO] chapters 文件夹为空，准备从第 1 章开始。")
 
-    if max_chapter_num == 0 and os.path.exists(STORY_FILE):
-        with open(STORY_FILE, "r", encoding="utf-8") as f:
-            full_text = f.read()
-            last_content = full_text[-2000:] 
-            chapter_matches = re.findall(r'第\s*(\d+)\s*章', full_text)
-            if chapter_matches:
-                max_chapter_num = int(chapter_matches[-1])
-                print(f"📖 检测到原始文档进度: 第 {max_chapter_num} 章")
-
+    # 3. 读取状态卡 (world_state.json)
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 world_state_data = json.load(f)
+                # 格式化成字符串发给 AI
                 world_state_str = f"主角状态: {world_state_data.get('protagonist', '未知')}\n"
                 world_state_str += "关键人物现状:\n" + "\n".join([f"- {k}: {v}" for k, v in world_state_data.get('key_npcs', {}).items()])
                 world_state_str += f"\n当前物资储备: {world_state_data.get('current_inventory', '未知')}"
                 world_state_str += f"\n剧情进度总结: {world_state_data.get('plot_progress', '未知')}"
         except Exception as e:
-            print(f"⚠️ 读取状态文件失败: {e}")
+            print(f"❌ [ERROR] 读取状态文件失败: {e}")
 
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
