@@ -44,29 +44,24 @@ jobs:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: python scripts/writer.py
 
-      - name: 统一同步并推送
+      - name: 统一提交并推送
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. 信任目录，防止 Git 报错
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # 2. 配置身份
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 3. 强制同步远程状态，解决冲突导致的 128 错误
+          # 1. 强制添加所有变动，包括 md 章节和 json 状态卡
+          git add chapters/*.md
+          git add world_state.json
+          
+          # 2. 拉取远程更新，防止 128 错误（由于 2 小时前可能有其他变动）
           git pull origin main --rebase
           
-          # 4. 添加变动
-          git add chapters/*.md world_state.json
-          
-          # 5. 提交并推送
+          # 3. 只有在有变动时才提交
           if git diff --staged --quiet; then
-            echo "⚠️ 无变动，跳过推送。"
+            echo "⚠️ 检测到 world_state.json 和章节均未变动，跳过推送。"
           else
-            COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
-            git commit -m "自动续写: 第 ${COUNT} 章及状态同步"
-            # 显式指定推送目标
+            git commit -m "自动续写：同步第 $(ls chapters/*.md | wc -l) 章剧情及世界状态 [skip ci]"
             git push origin main
           fi
