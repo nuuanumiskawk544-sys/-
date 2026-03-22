@@ -121,7 +121,12 @@ def write_novel():
         sys.exit(1)
 
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-
+    # 保存章节
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(new_chapter_content)
+    print(f"✅ 章节已保存: {file_path}")
+    # 这里的 old_state_data 是在函数开头由 get_comprehensive_context() 获取的
+    update_state_via_ai(client, new_chapter_content, old_state_data)
     # 4. 构建核心 Prompt
     prompt = f"""
 你现在是一名拥有十年经验的网文白金作家，擅长写《四合院》同人爽文。精通“三番四震”、“大循环套小循环”等所有爆款网文技巧。
