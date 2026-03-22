@@ -14,42 +14,29 @@ STATE_FILE = "world_state.json"
 # =========================
 
 def get_comprehensive_context():
-    """
-    智能上下文识别:
-    1. 扫描大纲、人物状态卡。
-    2. 自动识别章节编号与前情提要。
-    """
+    """智能上下文识别"""
     outline = "暂无大纲"
     world_state_data = {}
     world_state_str = "暂无实时状态记录"
     last_content = "暂无前情提要"
     max_chapter_num = 0
 
-    # 1. 读取大纲
     if os.path.exists(OUTLINE_FILE):
         with open(OUTLINE_FILE, "r", encoding="utf-8") as f:
             outline = f.read()
 
-    # 2. 识别章节进度 (优先检查 chapters 目录)
     if os.path.exists("chapters"):
         files = [f for f in os.listdir("chapters") if f.endswith(".md")]
         if files:
-            chapter_nums = []
-            for f in files:
-                match = re.match(r'(\d+)', f)
-                if match:
-                    chapter_nums.append(int(match.group(1)))
-            
-            if chapter_nums:
-                max_chapter_num = max(chapter_nums)
+            nums = [int(re.match(r'(\d+)', f).group(1)) for f in files if re.match(r'(\d+)', f)]
+            if nums:
+                max_chapter_num = max(nums)
                 pattern = f"{max_chapter_num:03d}"
-                target_files = [f for f in files if f.startswith(pattern)]
-                if target_files:
-                    with open(os.path.join("chapters", target_files[0]), "r", encoding="utf-8") as f:
-                        last_content = f.read()
-                    print(f"📡 检测到 chapters 进度: 第 {max_chapter_num} 章")
+                target = [f for f in files if f.startswith(pattern)][0]
+                with open(os.path.join("chapters", target), "r", encoding="utf-8") as f:
+                    last_content = f.read()
+                print(f"📡 检测到 chapters 进度: 第 {max_chapter_num} 章")
 
-    # 3. 如果 chapters 为空，读取原始 txt 文档
     if max_chapter_num == 0 and os.path.exists(STORY_FILE):
         with open(STORY_FILE, "r", encoding="utf-8") as f:
             full_text = f.read()
@@ -59,12 +46,10 @@ def get_comprehensive_context():
                 max_chapter_num = int(chapter_matches[-1])
                 print(f"📖 检测到原始文档进度: 第 {max_chapter_num} 章")
 
-    # 4. 读取人物状态卡
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 world_state_data = json.load(f)
-                # 格式化供 AI 阅读
                 world_state_str = f"主角状态: {world_state_data.get('protagonist', '未知')}\n"
                 world_state_str += "关键人物现状:\n" + "\n".join([f"- {k}: {v}" for k, v in world_state_data.get('key_npcs', {}).items()])
                 world_state_str += f"\n当前物资储备: {world_state_data.get('current_inventory', '未知')}"
@@ -72,92 +57,42 @@ def get_comprehensive_context():
         except Exception as e:
             print(f"⚠️ 读取状态文件失败: {e}")
 
-    # 统一返回 5 个变量，确保解包不出错
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data):
-    """让 AI 总结并强制写入 JSON"""
+    """同步世界状态到 JSON"""
     print("🧠 正在同步世界状态...")
-    
     update_prompt = f"""
-    请根据【新章节内容】，更新【旧状态数据】。
-    要求：仅返回更新后的 JSON 对象，严禁任何解释说明。
+    请根据【新章节内容】，更新【旧状态数据】。直接返回 JSON 格式。
     【旧数据】: {json.dumps(old_data, ensure_ascii=False)}
     【新内容】: {new_chapter_content[:1500]}
     """
-    
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ "type": "json_object" } # 强制 DeepSeek 返回 JSON
+            response_format={ "type": "json_object" }
         )
-        
-        # 清洗可能存在的 Markdown 标签
-        raw_json = response.choices[0].message.content
-        new_data = json.loads(raw_json)
-        
-        # 逻辑补全：确保章节号递增
+        new_data = json.loads(response.choices[0].message.content)
         new_data['last_update_chapter'] = old_data.get('last_update_chapter', 0) + 1
-        
-        # 🛠️ 关键动作：物理写入文件
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
-            
-        print(f"✨ [本地更新成功] {STATE_FILE} 内容已变更为第 {new_data['last_update_chapter']} 章状态")
-        
+        print(f"✨ [本地更新成功] {STATE_FILE} 已更新至第 {new_data['last_update_chapter']} 章")
     except Exception as e:
         print(f"❌ 状态更新失败: {str(e)}")
 
 def write_novel():
-    # 1. 获取四维数据
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
-    
-    # 2. 确定下一章编号
     next_index = current_count + 1
     
-    # 3. 初始化 AI 客户端
     api_key = os.getenv("AI_API_KEY")
     if not api_key:
-        print("❌ 错误：未配置 AI_API_KEY 环境变量")
+        print("❌ 错误：未配置 AI_API_KEY")
         sys.exit(1)
 
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
-    # 4. 构建 Prompt (此处省略详细内容，保持逻辑正确)
-    prompt = f"接续创作第 {next_index} 章..."
-
-    print(f"🚀 正在调用 AI 生成第 {next_index} 章...")
-
-    try:
-        response = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "你是一名冷酷爽文风格的网文作家。"},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.8
-        )
-
-        content = response.choices[0].message.content
-
-        # 5. 保存文件 (🚨 确保这里的缩进与上面的 response 对齐)
-        os.makedirs("chapters", exist_ok=True)
-        
-        file_path = f"chapters/{next_index:03d}_Chapter.md"
-        
-        # 写入章节内容
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        
-        print(f"✅ 成功生成：{file_path}")
-
-        # 6. 更新状态卡
-        update_state_via_ai(client, content, old_state_data)
-
-    except Exception as e:
-        print(f"❌ 运行崩溃：{str(e)}")
-        sys.exit(1)
+    # 4. 构建核心 Prompt
     prompt = f"""
 你现在是一名拥有十年经验的网文白金作家，擅长写《四合院》同人爽文。精通“三番四震”、“大循环套小循环”等所有爆款网文技巧。
 【创作铁律】：
