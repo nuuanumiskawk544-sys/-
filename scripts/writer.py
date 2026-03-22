@@ -194,7 +194,7 @@ def write_novel():
 【大纲设定】：
 {outline}
 【当前世界/人物实时状态卡】：（请严格遵守此设定，不要产生逻辑冲突）
-{world_state}
+{world_state_str}
 【前情提要（上一章结尾）】：
 {last_context[-1200:]}
 【核心续写要求】：
