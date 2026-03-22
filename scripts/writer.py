@@ -193,7 +193,7 @@ def write_novel():
     请直接从上一章结尾的动作开始，不要回顾，不要总结，直接写新剧情！
     """
 
-   print(f"🚀 正在调用 AI 生成第 {next_index} 章...")
+    print(f"🚀 正在调用 AI 生成第 {next_index} 章...")
 
     try:
         # 3. 先通过 AI 生成新章节内容
