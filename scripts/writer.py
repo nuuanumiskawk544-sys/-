@@ -99,7 +99,7 @@ def update_state_via_ai(client, new_chapter_content, old_data):
 
 def write_novel():
     # 1. 获取数据
-    outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
+    outline, world_state, last_context, current_count, old_state_data = get_comprehensive_context()
     next_index = current_count + 1
     
     # 2. 初始化客户端
