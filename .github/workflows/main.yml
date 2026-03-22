@@ -53,20 +53,19 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           
-          # 1. 先将变动加入暂存区
-          git add chapters/*.md
+          # 1. 添加所有变动
           git add world_state.json
+          git add chapters/*.md || echo "No new chapters"
           
-          # 2. 检查是否有变动，如果有，先在本地 Commit
+          # 2. 先提交到本地仓库（让工作区变干净）
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "没有检测到任何文件变动，跳过提交。"
           else
-            CHAPTER_COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
-            git commit -m "自动续写：第 ${CHAPTER_COUNT} 章及状态同步 [skip ci]"
+            git commit -m "自动续写同步 [skip ci]"
             
-            # 3. 此时再 Pull，如果有远程冲突，Rebase 会在 Commit 之后处理
+            # 3. 再拉取远程，解决冲突
             git pull origin main --rebase
             
-            # 4. 推送
+            # 4. 最后推送
             git push origin main
           fi
