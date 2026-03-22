@@ -33,15 +33,18 @@ jobs:
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: python scripts/writer.py
-
+        
+      - name: 自动审稿与逻辑校对
+        run: python scripts/reviewer.py # 如果审稿失败，流程会在此中断
+     
       - name: 内容自动质检与纠错
         run: python scripts/checker.py  # 插入质检脚本
 
       - name: 自动同步并推送
-        # 如果上一步退出码为 1，这一步将不会执行，保护了仓库内容的纯洁性
+        if: success() # 只有审稿通过才执行推送
         run: |
           git config --global user.name "github-actions[bot]"
-          ... (后续推送逻辑不变)
+          ... (后续推送逻辑保持不变)
       - name: 自动同步并推送
         run: |
           git config --global user.name "github-actions[bot]"
