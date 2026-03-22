@@ -28,7 +28,7 @@ def get_comprehensive_context():
     if os.path.exists(OUTLINE_FILE):
         with open(OUTLINE_FILE, "r", encoding="utf-8") as f:
             outline = f.read()
-    智能上下文识别
+    智能上下文识别:
     1. 扫描 chapters 目录，寻找文件名开头数字最大的文件。
     2. 如果 chapters 为空，扫描原始 txt 文件提取最后一章编号。
     """
