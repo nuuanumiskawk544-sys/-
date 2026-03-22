@@ -21,11 +21,15 @@ env:
 jobs:
   write_next_chapter:
     runs-on: ubuntu-latest
-    # 增加双重保险：如果提交信息里带了 [skip ci] 或 包含“停止”字样，则不运行
+    # 逻辑优化：手动启动(workflow_dispatch)时强制运行；
+    # 自动推送时，只有不含 [skip ci] 且不含“停止”才运行。
     if: |
-      github.event.head_commit.message != null &&
-      !contains(github.event.head_commit.message, '[skip ci]') &&
-      !contains(github.event.head_commit.message, '停止')
+      github.event_name == 'workflow_dispatch' || 
+      (
+        github.event.head_commit.message != null &&
+        !contains(github.event.head_commit.message, '[skip ci]') &&
+        !contains(github.event.head_commit.message, '停止')
+      )
     
     steps:
       - name: 检出代码
