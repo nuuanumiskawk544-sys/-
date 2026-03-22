@@ -60,27 +60,36 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data):
+    """物理更新 JSON 状态卡并强制刷新磁盘"""
+    print("🚩 [DEBUG] 准备进入 JSON 更新流程...")
+    
+    update_prompt = f"根据新章节内容更新状态 JSON。直接返回 JSON 格式。\n旧数据: {json.dumps(old_data, ensure_ascii=False)}\n新内容: {new_chapter_content[:1200]}"
+    
     try:
-        # ... 前面的 Prompt 定义保持不变 ...
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ "type": "json_object" } 
+            response_format={ "type": "json_object" }
         )
         
-        res_content = response.choices[0].message.content
-        # 🚨 增加这一行：强行剔除可能存在的 Markdown 标签
-        res_content = re.sub(r'```json|```', '', res_content).strip()
-        new_data = json.loads(res_content)
+        res_json = response.choices[0].message.content
+        # 过滤 Markdown 标签
+        clean_json = re.sub(r'```json|```', '', res_json).strip()
+        new_data = json.loads(clean_json)
         
-        # 确保章节数真的加了 1
+        # 强制增加进度
         new_data['last_update_chapter'] = int(old_data.get('last_update_chapter', 0)) + 1
         
+        # 🚨 核心：使用 utf-8 强制写入并物理同步
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
-        print(f"✨ 状态卡已物理写入: 第 {new_data['last_update_chapter']} 章")
+            f.flush()
+            os.fsync(f.fileno())
+            
+        print(f"✨ [SUCCESS] 状态卡物理写入完成：第 {new_data['last_update_chapter']} 章")
+        
     except Exception as e:
-        print(f"❌ 状态更新写入失败: {e}")
+        print(f"❌ [ERROR] JSON 写入环节崩溃: {e}")
 
 def write_novel():
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
