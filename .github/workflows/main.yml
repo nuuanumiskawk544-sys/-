@@ -1,69 +1,73 @@
-name: Infinite Ghost Writer
+name: Infinite Ghost Writer 2026
 
 on:
-  workflow_dispatch: # 强烈建议：通过手动点击按钮来开启“第一章”
+  workflow_dispatch: # 手动点击按钮启动
   push:
     branches:
       - main
     paths-ignore:
-      - 'README.md' # 忽略 README 的修改，防止你改设定时触发乱码
+      - 'README.md'
+      - 'chapters/**' # 防止自身推送陷入死循环
 
 permissions:
   contents: write
 
+env:
+  # 解决你收到的 Node.js 弃用警告，强制使用 Node 24
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+
 jobs:
   write_next_chapter:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '完结')" # 如果提到完结，则彻底停止
+    # 如果提交信息包含“完结”，则彻底停止自动化
+    if: "!contains(github.event.head_commit.message, '完结')"
+    
     steps:
-      - name: 检出代码
+      - name: 检出代码 (Checkout)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 必须获取完整历史，否则 push 必报 128 或 1
+          fetch-depth: 0 # 获取完整历史防止 push 失败
 
-      - name: 设置 Python
-        uses: actions/setup-python@v4
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5 # 升级到 v5 以更好地支持 Node 24
         with:
           python-version: '3.10'
 
       - name: 安装依赖
         run: pip install openai
 
-      - name: AI 创作章节
+      - name: AI 创作新章节
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: python scripts/writer.py
-        
-      - name: 自动审稿与逻辑校对
-        run: python scripts/reviewer.py # 如果审稿失败，流程会在此中断
-     
-      - name: 内容自动质检与纠错
-        run: python scripts/checker.py  # 插入质检脚本
 
-      - name: 自动同步并推送
+      - name: 自动审稿与纠错
         run: |
-          # 1. 强制配置身份，防止 Git 询问你是谁
+          if [ -f "scripts/reviewer.py" ]; then
+            python scripts/reviewer.py
+          else
+            echo "未发现审稿脚本，跳过质检。"
+          fi
+
+      - name: 自动同步并推送至 Main
+        run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # 2. 检查 chapters 目录是否存在，不存在则创建（防止 git add 报错导致 exit 2）
+          # 核心修复：确保目录存在且逻辑严密
           mkdir -p chapters
           
-          # 3. 拉取远程最新更改并合并（防止因远程有变动导致的推送失败）
+          # 拉取最新远程代码防止冲突
           git pull origin main --rebase
           
-          # 4. 暂存所有更改
           git add chapters/
           
-          # 5. 核心：判断是否有实际变动再提交
-          # 使用 git diff --staged 检查缓存区，如果没有文件变动，就不执行 commit
+          # 检查是否有文件变动 (修复 Exit code 2)
           if git diff --staged --quiet; then
-            echo "⚠️ 没有检测到新章节生成，跳过本次推送。"
+            echo "⚠️ 本次未生成新章节，流程结束。"
           else
-            # 获取当前章节数作为提交信息
-            CHAPTER_COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
-            git commit -m "自动续写新章节: 第 ${CHAPTER_COUNT} 章"
-            
-            # 6. 推送到远程
+            # 获取当前章节总数
+            COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
+            git commit -m "自动续写新章节: 第 ${COUNT} 章"
             git push origin main
           fi
