@@ -110,27 +110,54 @@ def update_state_via_ai(client, new_chapter_content, old_data):
         print(f"❌ 状态更新失败: {str(e)}")
 
 def write_novel():
-    # 1. 获取数据
-    outline, world_state, last_context, current_count, old_state_data = get_comprehensive_context()
+    # 1. 获取四维数据
+    outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
+    
+    # 2. 确定下一章编号
     next_index = current_count + 1
     
-    # 2. 初始化客户端
+    # 3. 初始化 AI 客户端
     api_key = os.getenv("AI_API_KEY")
     if not api_key:
-        print("❌ 错误: 未配置 AI_API_KEY")
+        print("❌ 错误：未配置 AI_API_KEY 环境变量")
         sys.exit(1)
+
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
-    # 3. 保存章节文件 (已经完成)
+    # 4. 构建 Prompt (此处省略详细内容，保持逻辑正确)
+    prompt = f"接续创作第 {next_index} 章..."
+
+    print(f"🚀 正在调用 AI 生成第 {next_index} 章...")
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "你是一名冷酷爽文风格的网文作家。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.8
+        )
+
+        content = response.choices[0].message.content
+
+        # 5. 保存文件 (🚨 确保这里的缩进与上面的 response 对齐)
+        os.makedirs("chapters", exist_ok=True)
+        
+        file_path = f"chapters/{next_index:03d}_Chapter.md"
+        
+        # 写入章节内容
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        print(f"✅ 成功生成: {file_path}")
+        
+        print(f"✅ 成功生成：{file_path}")
 
-        # 🚨 必须有下面这一行！
-        # 注意：这里的 old_state_data 必须是 get_comprehensive_context 返回的第五个变量
+        # 6. 更新状态卡
         update_state_via_ai(client, content, old_state_data)
-    
-    # 4. 构造 Prompt (已包含你所有的避坑要求和风格指令)
+
+    except Exception as e:
+        print(f"❌ 运行崩溃：{str(e)}")
+        sys.exit(1)
     prompt = f"""
 你现在是一名拥有十年经验的网文白金作家，擅长写《四合院》同人爽文。精通“三番四震”、“大循环套小循环”等所有爆款网文技巧。
 【创作铁律】：
