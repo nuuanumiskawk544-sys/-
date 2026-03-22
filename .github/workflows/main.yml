@@ -41,25 +41,29 @@ jobs:
         run: python scripts/checker.py  # 插入质检脚本
 
       - name: 自动同步并推送
-        if: success() # 只有审稿通过才执行推送
         run: |
-          git config --global user.name "github-actions[bot]"
-          ... (后续推送逻辑保持不变)
-      - name: 自动同步并推送
-        run: |
+          # 1. 强制配置身份，防止 Git 询问你是谁
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # 先拉取最新更改，防止 OOS 冲突
+          # 2. 检查 chapters 目录是否存在，不存在则创建（防止 git add 报错导致 exit 2）
+          mkdir -p chapters
+          
+          # 3. 拉取远程最新更改并合并（防止因远程有变动导致的推送失败）
           git pull origin main --rebase
           
+          # 4. 暂存所有更改
           git add chapters/
           
-          # 检查是否有新章节
+          # 5. 核心：判断是否有实际变动再提交
+          # 使用 git diff --staged 检查缓存区，如果没有文件变动，就不执行 commit
           if git diff --staged --quiet; then
-            echo "没有新内容，停止连载。"
+            echo "⚠️ 没有检测到新章节生成，跳过本次推送。"
           else
-            # 注意：这里千万不要加 [skip ci]，否则不会触发下一轮自动续写
-            git commit -m "自动续写新章节: 第 $(ls chapters | wc -l) 章"
+            # 获取当前章节数作为提交信息
+            CHAPTER_COUNT=$(ls chapters/*.md 2>/dev/null | wc -l)
+            git commit -m "自动续写新章节: 第 ${CHAPTER_COUNT} 章"
+            
+            # 6. 推送到远程
             git push origin main
           fi
