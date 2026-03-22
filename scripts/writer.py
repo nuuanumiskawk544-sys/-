@@ -60,26 +60,27 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data):
-    """同步世界状态到 JSON"""
-    print("🧠 正在同步世界状态...")
-    update_prompt = f"""
-    请根据【新章节内容】，更新【旧状态数据】。直接返回 JSON 格式。
-    【旧数据】: {json.dumps(old_data, ensure_ascii=False)}
-    【新内容】: {new_chapter_content[:1500]}
-    """
     try:
+        # ... 前面的 Prompt 定义保持不变 ...
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ "type": "json_object" }
+            response_format={ "type": "json_object" } 
         )
-        new_data = json.loads(response.choices[0].message.content)
-        new_data['last_update_chapter'] = old_data.get('last_update_chapter', 0) + 1
+        
+        res_content = response.choices[0].message.content
+        # 🚨 增加这一行：强行剔除可能存在的 Markdown 标签
+        res_content = re.sub(r'```json|```', '', res_content).strip()
+        new_data = json.loads(res_content)
+        
+        # 确保章节数真的加了 1
+        new_data['last_update_chapter'] = int(old_data.get('last_update_chapter', 0)) + 1
+        
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
-        print(f"✨ [本地更新成功] {STATE_FILE} 已更新至第 {new_data['last_update_chapter']} 章")
+        print(f"✨ 状态卡已物理写入: 第 {new_data['last_update_chapter']} 章")
     except Exception as e:
-        print(f"❌ 状态更新失败: {str(e)}")
+        print(f"❌ 状态更新写入失败: {e}")
 
 def write_novel():
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
@@ -94,6 +95,17 @@ def write_novel():
 
     # 4. 构建核心 Prompt
     prompt = f"""
+    ...
+    【绝对禁令】：
+    1. 严禁重复描写：当前已进行到第 {next_index} 章。禁止再写林东来刚穿越、刚获得系统、刚分家、刚遇到贾张氏第一次撒泼等前 3 章剧情！
+    2. 进度锚点：当前剧情已经发展到：{world_state_str}。
+    3. 强制推进：本章必须发生新的冲突（例如：鸽子市交易、厂里升职、或者苏云秀救治后的互动）。
+    
+    【前情提要（严禁重复此处内容）】：
+    {last_context[-1500:]}
+    
+    请直接从上一章结尾的动作开始，不要回顾，不要总结，直接写新剧情！
+    """
 你现在是一名拥有十年经验的网文白金作家，擅长写《四合院》同人爽文。精通“三番四震”、“大循环套小循环”等所有爆款网文技巧。
 【创作铁律】：
 极致爽感： 核心是情绪拉扯和打脸反转，爽点要密集且层层递进。
