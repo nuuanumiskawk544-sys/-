@@ -60,19 +60,24 @@ def get_comprehensive_context():
                 print(f"📖 检测到原始文档最新进度：第 {max_chapter_num} 章")
 
     return outline, last_content, max_chapter_num
-   # 新增：读取人物状态卡
-    world_state = "暂无实时状态"
-    if os.path.exists("world_state.json"):
-        with open("world_state.json", "r", encoding="utf-8") as f:
-            data = json.load(f)
-            # 将 JSON 转成文字，方便喂给 AI
-            world_state = f"主角状态：{data['protagonist']}\n"
-            world_state += "关键人物：\n" + "\n".join([f"- {k}: {v}" for k, v in data['key_npcs'].items()])
-            world_state += f"\n当前物资：{data['current_inventory']}"
-            world_state += f"\n剧情进度：{data['plot_progress']}"
+   # --- 3. 读取人物状态卡 (带 JSON 深度捕获) ---
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # 格式化 JSON 数据供 AI 阅读
+                world_state = f"主角状态：{data.get('protagonist', '未知')}\n"
+                world_state += "关键人物现状：\n" + "\n".join([f"- {k}: {v}" for k, v in data.get('key_npcs', {}).items()])
+                world_state += f"\n当前物资储备：{data.get('current_inventory', '未知')}"
+                world_state += f"\n当前剧情进度总结：{data.get('plot_progress', '未知')}"
+        except json.JSONDecodeError as e:
+            print(f"❌ 严重错误：{STATE_FILE} 格式不正确！")
+            print(f"💡 错误定位: 第 {e.lineno} 行，第 {e.colno} 列。原因: {e.msg}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"⚠️ 读取状态文件时发生未知错误: {e}")
 
-    return outline, last_content, max_chapter_num, world_state # 增加返回值
-
+    return outline, last_content, max_chapter_num, world_state
 def write_novel():
     # 1. 获取上下文和当前章节数
     outline, last_context, current_count = get_comprehensive_context()
