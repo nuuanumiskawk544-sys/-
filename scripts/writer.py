@@ -14,7 +14,17 @@ STATE_FILE = "world_state.json"
 # =========================
 
 def get_comprehensive_context():
-    """
+    """读取背景、状态和前情"""
+    outline = "暂无大纲"
+    world_state_data = {} # 存储原始字典，方便后续更新
+    world_state_str = "暂无实时状态"
+    last_content = "暂无前情"
+    max_chapter_num = 0
+
+    # 1. 读取大纲
+    if os.path.exists(OUTLINE_FILE):
+        with open(OUTLINE_FILE, "r", encoding="utf-8") as f:
+            outline = f.read()
     智能上下文识别：
     1. 扫描 chapters 目录，寻找文件名开头数字最大的文件。
     2. 如果 chapters 为空，扫描原始 txt 文件提取最后一章编号。
@@ -78,11 +88,62 @@ def get_comprehensive_context():
         except Exception as e:
             print(f"⚠️ 读取状态文件时发生未知错误: {e}")
 
-    return outline, last_content, max_chapter_num, world_state
-def write_novel():
-    # 1. 获取上下文和当前章节数
-    outline, last_context, current_count, world_state = get_comprehensive_context()
+  #  识别章节进度
+    if os.path.exists("chapters"):
+        files = [f for f in os.listdir("chapters") if f.endswith(".md")]
+        nums = [int(re.match(r'(\d+)', f).group(1)) for f in files if re.match(r'(\d+)', f)]
+        if nums:
+            max_chapter_num = max(nums)
+            target = [f for f in files if f.startswith(f"{max_chapter_num:03d}")][0]
+            with open(os.path.join("chapters", target), "r", encoding="utf-8") as f:
+                last_content = f.read()
+
+    return outline, world_state_str, last_content, max_chapter_num, world_state_data
+
+def update_state_via_ai(client, new_chapter_content, old_data):
+    """
+    让 AI 根据新写的内容，自动更新 world_state.json
+    """
+    print("🧠 正在请求 AI 总结并同步世界状态...")
     
+    update_prompt = f"""
+    你是文学助手。请根据【新章节内容】，更新【旧状态数据】。
+    
+    【旧状态数据】：
+    {json.dumps(old_data, ensure_ascii=False)}
+    
+    【新章节内容】：
+    {new_chapter_content[:2000]}
+    
+    要求：
+    1. 保持简练，每条信息不超过20字。
+    2. 更新主角的最新物资、NPC的死活或状态（如：贾张氏拉稀中 -> 贾张氏由于虚脱住院）。
+    3. 给出最新的剧情进度总结。
+    4. 必须直接返回 JSON 格式，不要有任何多余文字。
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": update_prompt}],
+            response_format={ 'type': 'json_object' } # 强制返回 JSON 格式
+        )
+        new_json_str = response.choices[0].message.content
+        new_data = json.loads(new_json_str)
+        
+        # 确保章节号也更新了
+        new_data['last_update_chapter'] = old_data.get('last_update_chapter', 0) + 1
+        
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(new_data, f, ensure_ascii=False, indent=2)
+        print(f"✅ 状态卡已更新并保存至 {STATE_FILE}")
+    except Exception as e:
+        print(f"⚠️ 自动更新状态失败: {e}")
+
+def write_novel():
+    # 1. 获取四维数据
+    outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
+   
     # 2. 确定下一章编号
     next_index = current_count + 1
     
