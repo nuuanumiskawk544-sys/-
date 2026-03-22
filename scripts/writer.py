@@ -60,6 +60,18 @@ def get_comprehensive_context():
                 print(f"📖 检测到原始文档最新进度：第 {max_chapter_num} 章")
 
     return outline, last_content, max_chapter_num
+   # 新增：读取人物状态卡
+    world_state = "暂无实时状态"
+    if os.path.exists("world_state.json"):
+        with open("world_state.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            # 将 JSON 转成文字，方便喂给 AI
+            world_state = f"主角状态：{data['protagonist']}\n"
+            world_state += "关键人物：\n" + "\n".join([f"- {k}: {v}" for k, v in data['key_npcs'].items()])
+            world_state += f"\n当前物资：{data['current_inventory']}"
+            world_state += f"\n剧情进度：{data['plot_progress']}"
+
+    return outline, last_content, max_chapter_num, world_state # 增加返回值
 
 def write_novel():
     # 1. 获取上下文和当前章节数
@@ -116,10 +128,10 @@ def write_novel():
 10.边界模糊：利用规则未明确定义的模糊区域规避处罚。
 【大纲设定】：
 {outline}
-
+【当前世界/人物实时状态卡】：（请严格遵守此设定，不要产生逻辑冲突）
+{world_state}
 【前情提要（上一章结尾）】：
 {last_context[-50000:]}
-
 【创作任务】：
 请接续前情，创作第 {next_index} 章。
 
@@ -169,6 +181,5 @@ def write_novel():
     except Exception as e:
         print(f"❌ AI 生成过程中出错：{str(e)}")
         sys.exit(1)
-
 if __name__ == "__main__":
     write_novel()
