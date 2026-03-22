@@ -64,6 +64,7 @@ jobs:
           mkdir -p chapters
           git pull origin main --rebase
           git add chapters/
+          git add world_state.json  #
           
           if git diff --staged --quiet; then
             echo "⚠️ 没有新章节，流程自然结束。"
