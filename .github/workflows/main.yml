@@ -71,12 +71,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-         git config --local user.email "action@github.com"
-         git config --local user.name "GitHub Action"
-         git add chapters/* world_state.json  # 🚨 确保包含此文件
-         # 下面这一行最容易在 34 行左右报错，加入了 || echo 防止无变化时崩溃
-         git commit -m "自动更新剧情进度及状态卡" || exit 0
-         git push  
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add chapters/* world_state.json 
+          git commit -m "自动更新: 第 ${{ env.CHAPTER_NUM }} 章及世界状态卡" || exit 0
+          git push
          
     
           if git diff --staged --quiet; then
