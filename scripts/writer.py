@@ -60,36 +60,36 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data):
-    """物理更新 JSON 状态卡并强制刷新磁盘"""
-    print("🚩 [DEBUG] 准备进入 JSON 更新流程...")
-    
-    update_prompt = f"根据新章节内容更新状态 JSON。直接返回 JSON 格式。\n旧数据: {json.dumps(old_data, ensure_ascii=False)}\n新内容: {new_chapter_content[:1200]}"
+    print("🔄 开始尝试同步人物状态卡...")
+    update_prompt = f"根据最新章节，更新以下 JSON 状态。仅返回纯 JSON 字符串。\n旧状态: {json.dumps(old_data, ensure_ascii=False)}\n新内容: {new_chapter_content[:1500]}"
     
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ "type": "json_object" }
+            response_format={ "type": "json_object" } # 强制 DeepSeek 输出 JSON
         )
         
-        res_json = response.choices[0].message.content
-        # 过滤 Markdown 标签
-        clean_json = re.sub(r'```json|```', '', res_json).strip()
-        new_data = json.loads(clean_json)
+        raw_res = response.choices[0].message.content
+        # 🚨 强制提取 JSON 部分，防止 AI 返回 Markdown 代码块
+        json_str = re.search(r'\{.*\}', raw_res, re.DOTALL).group()
+        new_data = json.loads(json_str)
         
-        # 强制增加进度
+        # 强制更新章节计数，确保 next_index 递增
         new_data['last_update_chapter'] = int(old_data.get('last_update_chapter', 0)) + 1
         
-        # 🚨 核心：使用 utf-8 强制写入并物理同步
+        # 🚨 物理写入：加入 flush 和 fsync 确保写入 Actions 的磁盘
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
             f.flush()
             os.fsync(f.fileno())
             
-        print(f"✨ [SUCCESS] 状态卡物理写入完成：第 {new_data['last_update_chapter']} 章")
+        print(f"✨ 状态卡更新成功！当前进度：第 {new_data['last_update_chapter']} 章")
         
     except Exception as e:
-        print(f"❌ [ERROR] JSON 写入环节崩溃: {e}")
+        print(f"❌ 状态更新失败！原因: {str(e)}")
+        # 即使失败也打印出原始返回，方便在 Actions 日志中排查
+        print(f"AI 原始返回内容: {raw_res if 'raw_res' in locals() else '无'}")
 
 def write_novel():
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
