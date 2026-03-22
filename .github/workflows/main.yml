@@ -65,7 +65,14 @@ jobs:
           git pull origin main --rebase
           git add chapters/
           git add world_state.json  #
-          
+      - name: 提交并推送更改
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add chapters/* world_state.json  
+        git commit -m "自动更新剧情进度：第 ${{ env.CHAPTER_NUM }} 章" || echo "无需更新"
+        git push
+         
           if git diff --staged --quiet; then
             echo "⚠️ 没有新章节，流程自然结束。"
           else
