@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import json
 from openai import OpenAI
 
 # ======= 核心配置区 =======
