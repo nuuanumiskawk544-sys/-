@@ -40,32 +40,50 @@ def init_memories():
             response_format={ "type": "json_object" }
         )
         
-        # 假设 AI 返回 {"history": ["...", "..."]}
+        # 解析 AI 返回的原始数据
         res_json = json.loads(response.choices[0].message.content)
-        # 兼容不同返回格式
-        new_history = res_json.get("history", list(res_json.values())[0])
+        
+        # 🚨 【修复核心】判断返回类型
+        if isinstance(res_json, list):
+            # 如果 AI 直接返回了 ["第1章...", "第2章..."]
+            new_history = res_json
+        elif isinstance(res_json, dict):
+            # 如果 AI 返回了 {"history": [...]} 或 {"data": [...]}
+            # 获取字典中第一个值（通常就是我们要的列表）
+            new_history = list(res_json.values())[0] 
+        else:
+            new_history = []
 
-        # 读取现有 JSON 状态
-        current_data = {}
+        # 读取现有 JSON 状态（如果存在）
+        current_data = {
+            "last_update_chapter": 15,
+            "plot_history": [],
+            "key_npcs": {},
+            "current_inventory": "随身空间（产肉/蔬菜/灵泉）"
+        }
+        
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
-                current_data = json.load(f)
+                try:
+                    current_data = json.load(f)
+                except: pass
 
-        # 合并记忆：前 15 章放在最前面
-        old_history = current_data.get("plot_history", [])
-        # 过滤掉可能重复的（如果之前的 3 条里有前 15 章的内容）
-        current_data["plot_history"] = new_history + old_history
+        # 确保 new_history 是列表并合并
+        if isinstance(new_history, list):
+            # 将新提炼的 15 条作为基础，再加上可能已经存在的后续记忆
+            # 如果你只想保留这 15 条，可以直接 current_data["plot_history"] = new_history
+            current_data["plot_history"] = new_history + current_data.get("plot_history", [])
+            # 简单去重（防止重复运行导致记忆翻倍）
+            current_data["plot_history"] = list(dict.fromkeys(current_data["plot_history"]))
+        
         current_data["last_update_chapter"] = max(current_data.get("last_update_chapter", 15), 15)
 
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(current_data, f, ensure_ascii=False, indent=2)
         
         print(f"✅ 初始化成功！当前记忆总条数：{len(current_data['plot_history'])}")
-        for i, h in enumerate(current_data["plot_history"][:15]):
-            print(f"  [第{i+1}章提炼]: {h}")
-
+        
     except Exception as e:
         print(f"❌ 初始化失败: {e}")
-
 if __name__ == "__main__":
     init_memories()
