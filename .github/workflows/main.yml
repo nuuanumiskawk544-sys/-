@@ -57,10 +57,10 @@ jobs:
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: |
-          if [ -f "scripts/writer.py" ]; then
-            python scripts/writer.py
+          if [ -f "scripts/init_history.py" ]; then
+            python scripts/init_history.py
           else
-            echo "错误：脚本 scripts/writer.py 不存在！"
+            echo "错误：脚本 scripts/init_history.py 不存在！"
             exit 1
           fi
 
