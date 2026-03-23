@@ -244,7 +244,7 @@ def write_novel():
 
         # 6. 【第二步写入】实时更新人物状态卡 (world_state.json)
         # 🚨 只有在这里调用，AI 才能根据刚刚生成的 new_chapter_content 来更新 JSON！
-        update_state_via_ai(client, new_chapter_content, old_state_data)
+        update_state_via_ai(client, new_chapter_content, old_state_data, next_index)
 
     except Exception as e:
         print(f"❌ 运行过程中出错：{str(e)}")
