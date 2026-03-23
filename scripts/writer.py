@@ -14,101 +14,78 @@ STATE_FILE = "world_state.json"
 # =========================
 
 def get_comprehensive_context():
-    """智能上下文识别：强制识别本地 chapters 文件夹的最高编号"""
+    """智能上下文识别：强制从第 15 章基准开始衔接"""
     outline, world_state_data, world_state_str = "暂无大纲", {}, "暂无实时状态记录"
-    last_content, max_chapter_num = "暂无前情提要", 0
+    last_content = "暂无前情提要"
+    
+    # 🚨 【设定基准】初始章数为 15
+    max_chapter_num = 15 
 
     # 1. 读取大纲
     if os.path.exists(OUTLINE_FILE):
         with open(OUTLINE_FILE, "r", encoding="utf-8") as f:
             outline = f.read()
 
-    # 2. 【核心步骤】识别 chapters 文件夹中的最高章节编号
-    if os.path.exists("chapters"):
-        # 获取所有 .md 文件
-        files = [f for f in os.listdir("chapters") if f.endswith(".md")]
-        if files:
-            # 🚨 关键：使用正则表达式提取文件名开头的数字（如 "018_Chapter.md" -> 18）
-            nums = []
-            for f in files:
-                match = re.match(r'(\d+)', f)
-                if match:
-                    nums.append(int(match.group(1)))
-            
-            if nums:
-                max_chapter_num = max(nums) # 找到最大的数字，比如 17
-                print(f"📡 [DEBUG] 脚本物理扫描完成：当前已写到第 {max_chapter_num} 章")
-                
-                # 找到对应这个最大数字的文件，读取内容作为“前情提要”
-                pattern = f"{max_chapter_num:03d}" # 格式化为 017 这种形式
-                target_files = [f for f in files if f.startswith(pattern)]
-                if target_files:
-                    target_path = os.path.join("chapters", target_files[0])
-                    with open(target_path, "r", encoding="utf-8") as f:
-                        last_content = f.read()
-            else:
-                print("⚠️ [WARNING] chapters 文件夹里有文件，但没找到数字编号。")
-        else:
-            print("ℹ️ [INFO] chapters 文件夹为空，准备从第 16 章开始。")
-    # 3. 物理扫描章节
+    # 2. 从 JSON 加载进度
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                world_state_data = json.load(f)
+                # 确保不低于 15
+                max_chapter_num = max(15, int(world_state_data.get("last_update_chapter", 15)))
+        except: pass
+
+    # 3. 物理扫描 chapters 文件夹纠偏
+    found_in_folder = False
     if os.path.exists("chapters"):
         files = [f for f in os.listdir("chapters") if f.endswith(".md")]
         if files:
             nums = [int(re.match(r'(\d+)', f).group(1)) for f in files if re.match(r'(\d+)', f)]
             if nums:
-                max_chapter_num = max(nums)
-                pattern = f"{max_chapter_num:03d}"
-                target = [f for f in files if f.startswith(pattern)]
-                if target:
-                    with open(os.path.join("chapters", target[0]), "r", encoding="utf-8") as f:
-                        last_content = f.read()
-                        
-    # 4. 读取状态卡（包含历史剧情索引）
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                world_state_data = json.load(f)
-                # 提取已发生的剧情摘要
-                history = world_state_data.get("plot_history", [])
-                world_state_str = f"【已发生核心剧情（绝对严禁重复）】: {', '.join(history[-10:])}\n"
-                world_state_str += f"【当前人物状态】: {json.dumps(world_state_data.get('key_npcs', {}), ensure_ascii=False)}"
-        except: pass
-    
+                folder_max = max(nums)
+                if folder_max > max_chapter_num:
+                    max_chapter_num = folder_max
+            
+            # 读取文件夹中最新一章的内容
+            pattern = f"{max_chapter_num:03d}"
+            target_files = [f for f in files if f.startswith(pattern)]
+            if target_files:
+                with open(os.path.join("chapters", target_files[0]), "r", encoding="utf-8") as f:
+                    last_content = f.read()
+                found_in_folder = True
+
+    # 4. 【衔接逻辑】如果 chapters 没文件，读根目录原文 .txt 的末尾
+    if not found_in_folder and os.path.exists(STORY_FILE):
+        print(f"📖 chapters为空，正在从原文提取第 {max_chapter_num} 章末尾作为第 16 章的起点...")
+        with open(STORY_FILE, "r", encoding="utf-8") as f:
+            full_text = f.read()
+            # 读取原文最后 2500 字作为续写依据
+            last_content = full_text[-2500:]
+
+    # 5. 构建状态字符串（包含前20章剧情黑名单以防重复）
+    history = world_state_data.get("plot_history", [])
+    history_summary = " -> ".join(history[-20:]) if history else "尚无记录"
+    world_state_str = f"【已发生核心剧情（绝对严禁重复）】: {history_summary}\n"
+    world_state_str += f"【当前人物状态】: {json.dumps(world_state_data.get('key_npcs', {}), ensure_ascii=False)}"
+
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
-    
-def update_state_via_ai(client, new_chapter_content, old_data):
+
+def update_state_via_ai(client, new_chapter_content, old_data, current_chapter_num):
     """【去重核心】自动提取本章概述并存入历史记录"""
-    print("🧠 正在提炼本章精华，拉入‘禁写名单’以防重复...")
+    print(f"🧠 正在同步第 {current_chapter_num} 章精华到记忆库...")
     
     update_prompt = f"""
     请分析新章节，更新JSON状态。
     要求：
-    1. 在 'plot_history' 列表中新增一句话简述本章发生的核心转折。
+    1. 在 'plot_history' 列表中新增一句话简述本章发生的核心转折（15字内）。
     2. 更新人物现状。
-    3. last_update_chapter 设为 {int(old_data.get('last_update_chapter', 0)) + 1}。
+    3. last_update_chapter 设为 {current_chapter_num}。
     
     【旧数据】: {json.dumps(old_data, ensure_ascii=False)}
     【新内容】: {new_chapter_content[:1500]}
     直接返回JSON。
     """
-    # 3. 【核心修复】获取“前情提要”的内容
-    # 情况 A：如果有 chapters 文件，读最高编号的文件
-    target_pattern = f"{max_chapter_num:03d}"
-    found_file = False
-    if os.path.exists("chapters"):
-        c_files = [f for f in os.listdir("chapters") if f.startswith(target_pattern)]
-        if c_files:
-            with open(os.path.join("chapters", c_files[0]), "r", encoding="utf-8") as f:
-                last_content = f.read()
-            found_file = True
-
-    # 情况 B：如果 chapters 里没找到对应文件（说明还在衔接根目录原文）
-    if not found_file and os.path.exists(STORY_FILE):
-        print(f"📖 正在从根目录原文提炼第 {max_chapter_num} 章末尾作为衔接点...")
-        with open(STORY_FILE, "r", encoding="utf-8") as f:
-            # 读取原文最后 2000 字作为 AI 的续写依据
-            content = f.read()
-            last_content = content[-2500:]
+    
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
@@ -117,16 +94,42 @@ def update_state_via_ai(client, new_chapter_content, old_data):
         )
         new_data = json.loads(response.choices[0].message.content)
         
-        # 确保 plot_history 存在并去重
-        if "plot_history" not in new_data: new_data["plot_history"] = old_data.get("plot_history", [])
+        # 确保基础字段完整
+        if "plot_history" not in new_data: 
+            new_data["plot_history"] = old_data.get("plot_history", [])
         
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
             f.flush()
             os.fsync(f.fileno())
-        print(f"✨ 记忆同步成功：已将本章事件归档，后续将永不重复。")
+        print(f"✨ 第 {current_chapter_num} 章记忆同步成功。")
     except Exception as e:
         print(f"❌ 状态同步失败: {e}")
+
+# ======= 执行主逻辑 =======
+def main():
+    api_key = os.getenv("AI_API_KEY")
+    if not api_key:
+        print("❌ 未找到 AI_API_KEY")
+        return
+        
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    
+    # 1. 获取所有上下文和当前章数
+    outline, world_state_str, last_content, max_num, old_data = get_comprehensive_context()
+    
+    # 2. 计算新章编号（15 + 1 = 16）
+    next_num = max_num + 1
+    print(f"🚀 准备开始创作第 {next_num} 章...")
+
+    # [这里插入你调用 AI 生成文章的具体代码，假设结果存入 new_chapter_content]
+    # new_chapter_content = ... 
+    
+    # 3. 生成后同步状态
+    # update_state_via_ai(client, new_chapter_content, old_data, next_num)
+
+if __name__ == "__main__":
+    main()
 
 def write_novel():
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
