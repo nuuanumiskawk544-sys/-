@@ -174,7 +174,7 @@ def write_novel():
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     
     # 5. 构建核心 Prompt
-   prompt = f"""
+    prompt = f"""
     你现在是一名拥有十年经验的网文白金作家,擅长写《四合院》同人爽文。
     精通“三番四震”、“大循环套小循环”等所有爆款网文技巧。
 
