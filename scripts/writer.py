@@ -52,12 +52,17 @@ def get_comprehensive_context():
             print("ℹ️ [INFO] chapters 文件夹为空，准备从第 1 章开始。")
 
     # 3. 读取状态卡 (world_state.json)
-    if os.path.exists(STATE_FILE):
+if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 world_state_data = json.load(f)
-                # 格式化成字符串发给 AI
-                world_state_str = f"主角状态: {world_state_data.get('protagonist', '未知')}\n"
+                # --- 新增：提取历史剧情去重索引 ---
+                history_list = world_state_data.get("plot_history", [])
+                history_summary = " -> ".join(history_list[-20:]) if history_list else "尚无记录"
+                
+                # 重新构建发给 AI 的状态字符串
+                world_state_str = f"【绝对禁写-已发生剧情轨迹】: {history_summary}\n"
+                world_state_str += f"主角状态: {world_state_data.get('protagonist', '未知')}\n"
                 world_state_str += "关键人物现状:\n" + "\n".join([f"- {k}: {v}" for k, v in world_state_data.get('key_npcs', {}).items()])
                 world_state_str += f"\n当前物资储备: {world_state_data.get('current_inventory', '未知')}"
                 world_state_str += f"\n剧情进度总结: {world_state_data.get('plot_progress', '未知')}"
@@ -73,20 +78,19 @@ def update_state_via_ai(client, new_chapter_content, old_data):
     print("🧠 正在实时分析剧情，更新人物状态卡...")
     
     # 构造极其严厉的 Prompt，防止 AI 偷懒返回旧数据
+
     update_prompt = f"""
-    你现在是数据记录员。请根据最新章节内容，更新《四合院》世界状态 JSON。
-    
-    【当前旧状态】：
-    {json.dumps(old_data, ensure_ascii=False, indent=2)}
-    
-    【最新章节片段】：
-    {new_chapter_content[:1500]}
+    你现在是高能数据记录员。根据新章节内容，更新《四合院》世界状态 JSON。
     
     【更新要求】：
-    1. 必须更新 'plot_progress'（描述当前林东来正在做什么）。
-    2. 必须更新 'key_npcs'（如果剧情中提到了苏云秀、易中海，更新他们的现状）。
-    3. 必须更新 'last_update_chapter' 为 {int(old_data.get('last_update_chapter', 0)) + 1}。
-    4. 仅返回 JSON 格式，不要任何解释。
+    1. 必须在 'plot_history' 数组中追加本章核心事件简述（严禁超过15字，如：林东来胡同救苏云秀）。
+    2. 必须更新 'plot_progress'（描述当前主角的具体位置和动作）。
+    3. 必须更新 'key_npcs'（根据剧情更新人物好感度或现状）。
+    4. 必须更新 'last_update_chapter' 为 {int(old_data.get('last_update_chapter', 0)) + 1}。
+    
+    【旧数据】：{json.dumps(old_data, ensure_ascii=False)}
+    【新情节】：{new_chapter_content[:1500]}
+    直接返回 JSON 格式，不要废话。
     """
 
     try:
