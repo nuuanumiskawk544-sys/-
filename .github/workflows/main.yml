@@ -40,19 +40,36 @@ jobs:
       - name: 安装依赖
         run: pip install openai
 
-      - name: 自动补全历史记忆索引
+      steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 保证能推送到远程
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install openai
+
+      # 第一步：运行记忆补全（含原文背景提炼）
+      - name: 补全历史剧情摘要
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: |
-          # 如果文件存在则运行，不存在则跳过，保证不报错
           if [ -f "fix_history.py" ]; then
             python fix_history.py
           fi
-      - name: AI 创作并同步状态
+
+      # 第二步：运行小说续写
+      - name: 运行小说生成脚本
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: python scripts/writer.py
 
+      # 第三步：整合后的统一提交推送
       - name: 统一提交并推送
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -61,19 +78,20 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           
-          # 1. 添加所有变动
+          # 暂存所有修改
           git add world_state.json
           git add chapters/*.md || echo "No new chapters"
           
-          # 2. 先提交到本地仓库（让工作区变干净）
+          # 检查变动并执行提交
           if git diff --staged --quiet; then
             echo "没有检测到任何文件变动，跳过提交。"
           else
-            git commit -m "自动续写同步 [skip ci]"
+            # 使用包含日期的动态提交信息
+            git commit -m "自动续写同步：第 $(date +%F) 章节及全量摘要 [skip ci]"
             
-            # 3. 再拉取远程，解决冲突
+            # 使用 rebase 模式拉取远程，防止分叉
             git pull origin main --rebase
             
-            # 4. 最后推送
+            # 最终推送
             git push origin main
           fi
