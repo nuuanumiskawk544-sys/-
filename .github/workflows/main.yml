@@ -40,6 +40,14 @@ jobs:
       - name: 安装依赖
         run: pip install openai
 
+      - name: 自动补全历史记忆索引
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+        run: |
+          # 如果文件存在则运行，不存在则跳过，保证不报错
+          if [ -f "fix_history.py" ]; then
+            python fix_history.py
+          fi
       - name: AI 创作并同步状态
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
