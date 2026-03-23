@@ -49,7 +49,7 @@ def get_comprehensive_context():
             else:
                 print("⚠️ [WARNING] chapters 文件夹里有文件，但没找到数字编号。")
         else:
-            print("ℹ️ [INFO] chapters 文件夹为空，准备从第 1 章开始。")
+            print("ℹ️ [INFO] chapters 文件夹为空，准备从第 16 章开始。")
     # 3. 物理扫描章节
     if os.path.exists("chapters"):
         files = [f for f in os.listdir("chapters") if f.endswith(".md")]
@@ -83,7 +83,7 @@ def update_state_via_ai(client, new_chapter_content, old_data):
     update_prompt = f"""
     请分析新章节，更新JSON状态。
     要求：
-    1. 在 'plot_history' 列表中新增一句话简述本章发生的核心转折（如：林东来救下苏云秀）。
+    1. 在 'plot_history' 列表中新增一句话简述本章发生的核心转折。
     2. 更新人物现状。
     3. last_update_chapter 设为 {int(old_data.get('last_update_chapter', 0)) + 1}。
     
@@ -91,7 +91,24 @@ def update_state_via_ai(client, new_chapter_content, old_data):
     【新内容】: {new_chapter_content[:1500]}
     直接返回JSON。
     """
-    
+    # 3. 【核心修复】获取“前情提要”的内容
+    # 情况 A：如果有 chapters 文件，读最高编号的文件
+    target_pattern = f"{max_chapter_num:03d}"
+    found_file = False
+    if os.path.exists("chapters"):
+        c_files = [f for f in os.listdir("chapters") if f.startswith(target_pattern)]
+        if c_files:
+            with open(os.path.join("chapters", c_files[0]), "r", encoding="utf-8") as f:
+                last_content = f.read()
+            found_file = True
+
+    # 情况 B：如果 chapters 里没找到对应文件（说明还在衔接根目录原文）
+    if not found_file and os.path.exists(STORY_FILE):
+        print(f"📖 正在从根目录原文提炼第 {max_chapter_num} 章末尾作为衔接点...")
+        with open(STORY_FILE, "r", encoding="utf-8") as f:
+            # 读取原文最后 2000 字作为 AI 的续写依据
+            content = f.read()
+            last_content = content[-2500:]
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
