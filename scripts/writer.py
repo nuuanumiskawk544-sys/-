@@ -74,12 +74,21 @@ def update_state_via_ai(client, new_chapter_content, old_data, current_chapter_n
     """【绝不动摇的追加逻辑】强制读取物理文件，严禁 AI 篡改历史"""
     print(f"🧠 正在分析第 {current_chapter_num} 章并存入长效记忆库...")
 
-    # 1. 仅让 AI 提供这一章的摘要，不要让它碰整个 JSON
+    # 🚨 【修正后的第二步：加入严格 Prompt 约束】
+    # 强制要求 AI 只能输出本章进展，禁止复述设定或历史
     summary_prompt = f"""
-    请用一句话简述本章节的核心剧情转折（15字以内）。
-    【新内容】: {new_chapter_content[:1500]}
-    要求：直接返回 JSON 格式，如 {{"summary": "..."}}
-    """
+    分析新生成的第 {current_chapter_num} 章，仅提取一个核心剧情进展。
+    
+    要求（违者扣分）：
+    1. 严禁包含任何“核心设定”、“系统介绍”、“金手指描述”等废话。
+    2. 严禁复述前情提要。
+    3. 只返回本章发生的新动作，字数在15字以内。
+    4. 示例：林东来在街道办通过考核，成功为苏云秀入职。
+    
+    格式要求：必须返回 JSON 格式，如 {{"summary": "一句话描述"}}
+    
+    【待分析内容】: 
+    {new_chapter_content[:2500]}
 
     try:
         # 获取 AI 提炼的新摘要
