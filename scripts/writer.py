@@ -92,7 +92,29 @@ def update_state_via_ai(client, new_chapter_content, old_data, current_chapter_n
             messages=[{"role": "user", "content": update_prompt}],
             response_format={ "type": "json_object" }
         )
+       # 1. 解析 AI 返回的新 JSON
         new_data = json.loads(response.choices[0].message.content)
+        
+        # 2. 获取旧的记忆列表（如果不存在则设为空列表）
+        full_history = old_data.get("plot_history", [])
+        
+        # 3. 获取 AI 刚刚提炼的那一句话（假设键名是 'plot_history'）
+        # 注意：AI 有时返回的是字符串，有时是列表，这里要做兼容
+        new_segment = new_data.get("plot_history", "")
+        
+        if isinstance(new_segment, list) and len(new_segment) > 0:
+            # 如果 AI 返回的是列表，取第一项并追加
+            full_history.append(new_segment[0])
+        elif isinstance(new_segment, str) and new_segment.strip():
+            # 如果 AI 返回的是单句字符串，直接追加
+            full_history.append(new_segment)
+
+        # 4. 把合并后的完整列表重新放回 new_data
+        new_data["plot_history"] = full_history
+        
+        # 5. 最后写入文件
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(new_data, f, ensure_ascii=False, indent=2)
         
         # 确保基础字段完整
         if "plot_history" not in new_data: 
