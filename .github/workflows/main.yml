@@ -38,39 +38,32 @@ jobs:
           python-version: '3.10'
 
       - name: 安装依赖
-        run: pip install openai
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai
 
-      steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 保证能推送到远程
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: pip install openai
-
-      # 第一步：运行记忆补全（含原文背景提炼）
-      - name: 补全历史剧情摘要
+      - name: 第一步：补全历史剧情摘要（含原文背景）
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: |
           if [ -f "fix_history.py" ]; then
             python fix_history.py
+          else
+            echo "未找到 fix_history.py，跳过记忆补全。"
           fi
 
-      # 第二步：运行小说续写
-      - name: 运行小说生成脚本
+      - name: 第二步：运行小说生成脚本
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-        run: python scripts/writer.py
+        run: |
+          if [ -f "scripts/writer.py" ]; then
+            python scripts/writer.py
+          else
+            echo "错误：脚本 scripts/writer.py 不存在！"
+            exit 1
+          fi
 
-      # 第三步：整合后的统一提交推送
-      - name: 统一提交并推送
+      - name: 第三步：统一提交并推送
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -78,20 +71,20 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           
-          # 暂存所有修改
+          # 1. 添加所有变动
           git add world_state.json
           git add chapters/*.md || echo "No new chapters"
           
-          # 检查变动并执行提交
+          # 2. 检查并执行提交
           if git diff --staged --quiet; then
             echo "没有检测到任何文件变动，跳过提交。"
           else
-            # 使用包含日期的动态提交信息
-            git commit -m "自动续写同步：第 $(date +%F) 章节及全量摘要 [skip ci]"
+            # 使用包含日期的提交信息并包含 [skip ci] 防止死循环
+            git commit -m "自动续写同步：第 $(date +%F) 章节及摘要 [skip ci]"
             
-            # 使用 rebase 模式拉取远程，防止分叉
+            # 3. 拉取远程，解决冲突
             git pull origin main --rebase
             
-            # 最终推送
+            # 4. 推送
             git push origin main
           fi
