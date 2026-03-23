@@ -71,18 +71,17 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data, current_chapter_num):
-    """【修正版】确保每一章都会新增一条记忆，而不是跳过"""
-    print(f"🧠 正在分析第 {current_chapter_num} 章并存入长效记忆...")
+    """【物理级增量追加】强制读取磁盘文件，严防记忆丢失"""
+    print(f"🧠 正在同步第 {current_chapter_num} 章精华到长效记忆库...")
 
-    # 1. 让 AI 只总结这一章的内容
+    # 1. 让 AI 仅针对当前章节提炼摘要
     summary_prompt = f"""
-    请用一句话简述本章节的核心剧情转折（15字以内）。
-    内容：{new_chapter_content[:1500]}
-    要求：直接返回 JSON 格式，如 {{"summary": "..."}}
+    请分析新章节，用一句话简述本章核心转折（15字以内）。
+    【新内容】: {new_chapter_content[:1500]}
+    直接返回JSON：{{"summary": "..."}}
     """
 
     try:
-        # 获取 AI 提炼的单章简述
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": summary_prompt}],
@@ -91,31 +90,41 @@ def update_state_via_ai(client, new_chapter_content, old_data, current_chapter_n
         res_json = json.loads(response.choices[0].message.content)
         new_summary = res_json.get("summary", "剧情继续推进")
 
-        # 2. 【关键】从 old_data 获取现有记忆并追加
-        # 如果没有 list，就建一个空的
-        current_history = old_data.get("plot_history", [])
-        
-        # 构造这一章的记忆条目
+        # 🚨 【核心修复】不信任内存中的 old_data，直接读取磁盘上的最新 JSON
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                # 实时加载磁盘上真正的历史记录
+                real_time_data = json.load(f)
+        else:
+            # 如果文件不存在，才回退使用传入的 old_data
+            real_time_data = old_data.copy()
+
+        # 确保列表结构完整
+        if "plot_history" not in real_time_data or not isinstance(real_time_data["plot_history"], list):
+            real_time_data["plot_history"] = []
+
+        # 2. 构造带编号的条目
         new_entry = f"第{current_chapter_num}章：{new_summary}"
         
-        # 🚨 追加到末尾，不要覆盖！
-        current_history.append(new_entry)
+        # 🚨 检查是否已经存在该章节记录（防止重复运行导致的重复追加）
+        if not any(entry.startswith(f"第{current_chapter_num}章") for entry in real_time_data["plot_history"]):
+            real_time_data["plot_history"].append(new_entry)
+            print(f"📝 已追加新记忆: {new_entry}")
+        else:
+            print(f"⚠️ 第 {current_chapter_num} 章记录已存在，跳过追加以防重复。")
 
-        # 3. 更新数据对象并保存
-        new_data = old_data.copy()
-        new_data["plot_history"] = current_history
-        new_data["last_update_chapter"] = current_chapter_num
-
+        # 3. 更新元数据并物理写入
+        real_time_data["last_update_chapter"] = current_chapter_num
+        
         with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(new_data, f, ensure_ascii=False, indent=2)
+            json.dump(real_time_data, f, ensure_ascii=False, indent=2)
             f.flush()
             os.fsync(f.fileno())
 
-        print(f"🚀 增量同步完成！当前总计记忆条_idx: {len(current_history)}")
+        print(f"🚀 增量同步完成！当前记忆总条数: {len(real_time_data['plot_history'])}")
 
     except Exception as e:
         print(f"❌ 同步失败: {e}")
-
 # ======= 执行主逻辑 =======
 def main():
     api_key = os.getenv("AI_API_KEY")
