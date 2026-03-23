@@ -81,7 +81,25 @@ def init_memories():
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(current_data, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ 初始化成功！当前记忆总条数：{len(current_data['plot_history'])}")
+        new_data = {
+            "last_update_chapter": 15,
+            "plot_history": new_history_list,
+            "key_npcs": {
+                "林东来": "主角，腹黑冷酷，拥有随身空间",
+                "贾张氏": "禽兽一号，贪婪撒泼",
+                "易中海": "伪君子，道德绑架高手"
+            },
+            "current_inventory": "随身空间（产肉/蔬菜/灵泉），存款若干"
+        }
+
+        # 写入文件
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(new_data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+            
+        print(f"✅ 初始化成功！已建立前 15 章记忆档案。")
+        print(f"📡 当前 plot_history 条数: {len(new_history_list)}")
         
     except Exception as e:
         print(f"❌ 初始化失败: {e}")
