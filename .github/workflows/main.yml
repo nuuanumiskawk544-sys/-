@@ -18,6 +18,7 @@ permissions:
 jobs:
   write_next_chapter:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  
     if: |
       github.event_name == 'workflow_dispatch' || 
       (
