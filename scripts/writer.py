@@ -71,60 +71,63 @@ def get_comprehensive_context():
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
 
 def update_state_via_ai(client, new_chapter_content, old_data, current_chapter_num):
-    """【物理级增量追加】强制读取磁盘文件，严防记忆丢失"""
-    print(f"🧠 正在同步第 {current_chapter_num} 章精华到长效记忆库...")
+    """【绝不动摇的追加逻辑】强制读取物理文件，严禁 AI 篡改历史"""
+    print(f"🧠 正在分析第 {current_chapter_num} 章并存入长效记忆库...")
 
-    # 1. 让 AI 仅针对当前章节提炼摘要
+    # 1. 仅让 AI 提供这一章的摘要，不要让它碰整个 JSON
     summary_prompt = f"""
-    请分析新章节，用一句话简述本章核心转折（15字以内）。
+    请用一句话简述本章节的核心剧情转折（15字以内）。
     【新内容】: {new_chapter_content[:1500]}
-    直接返回JSON：{{"summary": "..."}}
+    要求：直接返回 JSON 格式，如 {{"summary": "..."}}
     """
 
     try:
+        # 获取 AI 提炼的新摘要
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": summary_prompt}],
             response_format={ "type": "json_object" }
         )
         res_json = json.loads(response.choices[0].message.content)
-        new_summary = res_json.get("summary", "剧情继续推进")
+        new_summary_text = res_json.get("summary", "剧情继续推进")
 
-        # 🚨 【核心修复】不信任内存中的 old_data，直接读取磁盘上的最新 JSON
+        # 2. 【核心保命逻辑】强制从硬盘读取最真实的历史
+        # 不要信任内存里的 old_data，因为它可能被上一步逻辑洗掉了
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
-                # 实时加载磁盘上真正的历史记录
-                real_time_data = json.load(f)
+                # 这一步是读取硬盘上所有 1-18 章的真实历史
+                disk_data = json.load(f)
         else:
-            # 如果文件不存在，才回退使用传入的 old_data
-            real_time_data = old_data.copy()
+            # 如果文件离奇失踪，才创建一个空的模板
+            disk_data = {"plot_history": [], "last_update_chapter": 0}
 
-        # 确保列表结构完整
-        if "plot_history" not in real_time_data or not isinstance(real_time_data["plot_history"], list):
-            real_time_data["plot_history"] = []
+        # 确保 plot_history 始终是一个列表，防止被 AI 篡改为字符串
+        if not isinstance(disk_data.get("plot_history"), list):
+            disk_data["plot_history"] = []
 
-        # 2. 构造带编号的条目
-        new_entry = f"第{current_chapter_num}章：{new_summary}"
+        # 3. 【防重逻辑】构造带编号的条目
+        new_entry = f"第{current_chapter_num}章：{new_summary_text}"
         
-        # 🚨 检查是否已经存在该章节记录（防止重复运行导致的重复追加）
-        if not any(entry.startswith(f"第{current_chapter_num}章") for entry in real_time_data["plot_history"]):
-            real_time_data["plot_history"].append(new_entry)
-            print(f"📝 已追加新记忆: {new_entry}")
+        # 检查是否已经存在该章节记录，不存在才追加
+        if not any(entry.startswith(f"第{current_chapter_num}章") for entry in disk_data["plot_history"]):
+            disk_data["plot_history"].append(new_entry)
+            print(f"✅ 已成功将第 {current_chapter_num} 章追加到末尾。")
         else:
-            print(f"⚠️ 第 {current_chapter_num} 章记录已存在，跳过追加以防重复。")
+            print(f"⚠️ 第 {current_chapter_num} 章已在记录中，跳过追加以防重复。")
 
-        # 3. 更新元数据并物理写入
-        real_time_data["last_update_chapter"] = current_chapter_num
-        
+        # 4. 更新章节进度（只更新数字，不准 AI 修改其他字段）
+        disk_data["last_update_chapter"] = current_chapter_num
+
+        # 5. 【物理写入】用合并后的 disk_data 覆盖写入，这才是真正的追加
         with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(real_time_data, f, ensure_ascii=False, indent=2)
+            json.dump(disk_data, f, ensure_ascii=False, indent=2)
             f.flush()
             os.fsync(f.fileno())
 
-        print(f"🚀 增量同步完成！当前记忆总条数: {len(real_time_data['plot_history'])}")
+        print(f"🚀 物理同步成功！当前记忆总条数: {len(disk_data['plot_history'])}")
 
     except Exception as e:
-        print(f"❌ 同步失败: {e}")
+        print(f"❌ 同步失败，原因: {str(e)}")
 # ======= 执行主逻辑 =======
 def main():
     api_key = os.getenv("AI_API_KEY")
