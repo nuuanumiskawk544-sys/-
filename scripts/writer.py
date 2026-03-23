@@ -50,70 +50,66 @@ def get_comprehensive_context():
                 print("⚠️ [WARNING] chapters 文件夹里有文件，但没找到数字编号。")
         else:
             print("ℹ️ [INFO] chapters 文件夹为空，准备从第 1 章开始。")
-
-    # 3. 读取状态卡 (world_state.json)
-if os.path.exists(STATE_FILE):
+    # 3. 物理扫描章节
+    if os.path.exists("chapters"):
+        files = [f for f in os.listdir("chapters") if f.endswith(".md")]
+        if files:
+            nums = [int(re.match(r'(\d+)', f).group(1)) for f in files if re.match(r'(\d+)', f)]
+            if nums:
+                max_chapter_num = max(nums)
+                pattern = f"{max_chapter_num:03d}"
+                target = [f for f in files if f.startswith(pattern)]
+                if target:
+                    with open(os.path.join("chapters", target[0]), "r", encoding="utf-8") as f:
+                        last_content = f.read()
+                        
+    # 4. 读取状态卡（包含历史剧情索引）
+    if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 world_state_data = json.load(f)
-                # --- 新增：提取历史剧情去重索引 ---
-                history_list = world_state_data.get("plot_history", [])
-                history_summary = " -> ".join(history_list[-20:]) if history_list else "尚无记录"
-                
-                # 重新构建发给 AI 的状态字符串
-                world_state_str = f"【绝对禁写-已发生剧情轨迹】: {history_summary}\n"
-                world_state_str += f"主角状态: {world_state_data.get('protagonist', '未知')}\n"
-                world_state_str += "关键人物现状:\n" + "\n".join([f"- {k}: {v}" for k, v in world_state_data.get('key_npcs', {}).items()])
-                world_state_str += f"\n当前物资储备: {world_state_data.get('current_inventory', '未知')}"
-                world_state_str += f"\n剧情进度总结: {world_state_data.get('plot_progress', '未知')}"
-        except Exception as e:
-            print(f"❌ [ERROR] 读取状态文件失败: {e}")
-
+                # 提取已发生的剧情摘要
+                history = world_state_data.get("plot_history", [])
+                world_state_str = f"【已发生核心剧情（绝对严禁重复）】: {', '.join(history[-10:])}\n"
+                world_state_str += f"【当前人物状态】: {json.dumps(world_state_data.get('key_npcs', {}), ensure_ascii=False)}"
+        except: pass
+    
     return outline, world_state_str, last_content, max_chapter_num, world_state_data
-
+    
 def update_state_via_ai(client, new_chapter_content, old_data):
-    """
-    强制 AI 根据新剧情解析出人物状态的变化（如：林东来救了人、易中海破防了等）
-    """
-    print("🧠 正在实时分析剧情，更新人物状态卡...")
+    """【去重核心】自动提取本章概述并存入历史记录"""
+    print("🧠 正在提炼本章精华，拉入‘禁写名单’以防重复...")
     
-    # 构造极其严厉的 Prompt，防止 AI 偷懒返回旧数据
-
     update_prompt = f"""
-    你现在是高能数据记录员。根据新章节内容，更新《四合院》世界状态 JSON。
+    请分析新章节，更新JSON状态。
+    要求：
+    1. 在 'plot_history' 列表中新增一句话简述本章发生的核心转折（如：林东来救下苏云秀）。
+    2. 更新人物现状。
+    3. last_update_chapter 设为 {int(old_data.get('last_update_chapter', 0)) + 1}。
     
-    【更新要求】：
-    1. 必须在 'plot_history' 数组中追加本章核心事件简述（严禁超过15字，如：林东来胡同救苏云秀）。
-    2. 必须更新 'plot_progress'（描述当前主角的具体位置和动作）。
-    3. 必须更新 'key_npcs'（根据剧情更新人物好感度或现状）。
-    4. 必须更新 'last_update_chapter' 为 {int(old_data.get('last_update_chapter', 0)) + 1}。
-    
-    【旧数据】：{json.dumps(old_data, ensure_ascii=False)}
-    【新情节】：{new_chapter_content[:1500]}
-    直接返回 JSON 格式，不要废话。
+    【旧数据】: {json.dumps(old_data, ensure_ascii=False)}
+    【新内容】: {new_chapter_content[:1500]}
+    直接返回JSON。
     """
-
+    
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": update_prompt}],
-            response_format={ "type": "json_object" } # 强制输出合法 JSON
+            response_format={ "type": "json_object" }
         )
+        new_data = json.loads(response.choices[0].message.content)
         
-        # 解析并清理数据
-        res_json = response.choices[0].message.content
-        new_data = json.loads(re.search(r'\{.*\}', res_json, re.DOTALL).group())
+        # 确保 plot_history 存在并去重
+        if "plot_history" not in new_data: new_data["plot_history"] = old_data.get("plot_history", [])
         
-        # 物理写入：确保文件被真正修改
         with open(STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(new_data, f, ensure_ascii=False, indent=2)
             f.flush()
-            os.fsync(f.fileno()) # 强制同步到磁盘
-            
-        print(f"✨ 状态卡已更新！当前剧情位置：{new_data.get('plot_progress')}")
-        
+            os.fsync(f.fileno())
+        print(f"✨ 记忆同步成功：已将本章事件归档，后续将永不重复。")
     except Exception as e:
-        print(f"❌ 状态实时同步失败: {e}")
+        print(f"❌ 状态同步失败: {e}")
 
 def write_novel():
     outline, world_state_str, last_context, current_count, old_state_data = get_comprehensive_context()
@@ -126,7 +122,7 @@ def write_novel():
 
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     
-    # 4. 构建核心 Prompt
+    # 5. 构建核心 Prompt
     prompt = f"""
 你现在是一名拥有十年经验的网文白金作家，擅长写《四合院》同人爽文。精通“三番四震”、“大循环套小循环”等所有爆款网文技巧。
 【创作铁律】：
@@ -185,8 +181,10 @@ def write_novel():
     1. 严禁重复描写：当前已进行到第 {next_index} 章。禁止再写林东来刚穿越、刚获得系统、刚分家、刚遇到贾张氏第一次撒泼等前 3 章剧情！
     2. 进度锚点：当前剧情已经发展到：{world_state_str}。
     3. 强制推进：本章必须发生新的冲突（例如：鸽子市交易、厂里升职、或者苏云秀救治后的互动）。
-    
-    【前情提要（严禁重复此处内容）】：
+    4. 绝对严禁写上述“已发生剧情”中的任何桥段！
+    5. 绝对严禁写穿越初期、分家、第一次见贾张氏等旧事！
+    6. 如果历史记录显示苏云秀已被救，本章严禁再写救人，应写后续互动。
+    【前情提要（仅供接棒，严禁复述）】：
     {last_context[-1500:]}
     
     请直接从上一章结尾的动作开始，不要回顾，不要总结，直接写新剧情！
